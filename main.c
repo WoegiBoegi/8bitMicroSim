@@ -31,7 +31,7 @@
  * 3x A || B
  * 4x C || D
  * 5x E || F
- * 7x H || M
+ * 6x H || L
  * A x0 || x8
  * B x1 || x9
  * C x2 || xa
@@ -41,7 +41,7 @@
  * H x6 || xe
  * M x7 || xf
  *
- * 0x30 - 0x7f reserved for MOV operations
+ * 0x30 - 0x6f reserved for MOV operations
  * eg. 0x5c = MOV F,E
  */
 
@@ -75,14 +75,101 @@ void printDebugInfo(){
     printf("EXECUTION HALTED: DUMPING ALL INFO:\n");
     //print all registers, flags, etc. as well
     printf("program counter at position %04x\n",ProgramCounter);
-    printf("value in Accumulator: %02x\nvalue in Register B: %02x\n",ACC,REG_B);
+    printf("value in Accumulator: %02x\nvalue in Register B:  %02x\n"
+           "value in Register C:  %02x\nvalue in Register D:  %02x\nvalue in Register E:  %02x\n"
+           "value in Register F:  %02x\nvalue in Register H:  %02x\nvalue in Register L:  %02x\n",
+           ACC,REG_B,REG_C,REG_D,REG_E,REG_F,REG_H,REG_L);
     printf("dumping Memory:\n");
     printMEM();
     printf("========================================================\n");
 }
 
 int MOV(char OP){
-    if(OP >= 0x30 && OP <= 0x7f)
+    char digitOne = (OP/0x10)*0x10;
+    char digitTwo = OP-(digitOne);
+    int isTwoHigh = 0;
+    if(digitTwo>0x07){
+        isTwoHigh = 1;
+    }
+
+    unsigned char *REGOne;
+    unsigned char *REGTwo;
+    switch(digitOne){
+        case 0x30:
+            if(isTwoHigh){
+                REGOne = &REG_B;
+            }
+            else{
+                REGOne = &ACC;
+            }
+            break;
+        case 0x40:
+            if(isTwoHigh){
+                REGOne = &REG_D;
+            }
+            else{
+                REGOne = &REG_C;
+            }
+        case 0x50:
+            if(isTwoHigh){
+                REGOne = &REG_F;
+            }
+            else{
+                REGOne = &REG_E;
+            }
+        case 0x60:
+            if(isTwoHigh){
+                REGOne = &REG_L;
+            }
+            else{
+                REGOne = &REG_H;
+            }
+    }
+
+    switch(digitTwo){
+        case 0x00:
+        case 0x08:
+            REGTwo = &ACC;
+            break;
+        case 0x01:
+        case 0x09:
+            REGTwo = &REG_B;
+            break;
+        case 0x02:
+        case 0x0a:
+            REGTwo = &REG_C;
+            break;
+        case 0x03:
+        case 0x0b:
+            REGTwo = &REG_D;
+            break;
+        case 0x04:
+        case 0x0c:
+            REGTwo = &REG_E;
+            break;
+        case 0x05:
+        case 0x0d:
+            REGTwo = &REG_F;
+            break;
+        case 0x06:
+        case 0x0e:
+            REGTwo = &REG_H;
+            break;
+        case 0x07:
+        case 0x0f:
+            REGTwo = &REG_L;
+            break;
+    }
+
+    *REGOne = *REGTwo;
+
+    return 0;
+}
+
+int getInstruction(char OP){
+    if(OP >= 0x30 && OP <= 0x7f){
+        return MOV(OP);
+    }
     return 1;
 }
 
@@ -98,12 +185,12 @@ int MainLoop(){
                 printDebugInfo();
                 return 0;
             case LDA:
-                ACC = RAM[MEMADDR];
-                ProgramCounter+=2;
+                ACC = RAM[ProgramCounter+1];
+                ProgramCounter++;
                 break;
             case STA:
-                RAM[RAM[MEMADDR]] = ACC;
-                ProgramCounter+=2;
+                RAM[RAM[ProgramCounter+1]] = ACC;
+                ProgramCounter++;
                 break;
             case LDAM:
                 ACC = RAM[HLADDR];
@@ -115,10 +202,11 @@ int MainLoop(){
                 ACC += REG_B;
                 break;
             default:
-                int ret = get
-                printf("ERROR: invalid opcode detected, cannot execute");
-                printDebugInfo();
-                return 1;
+                if(getInstruction(OP)){
+                    printf("ERROR: invalid opcode detected, cannot execute");
+                    printDebugInfo();
+                    return 1;
+                }
         }
         ProgramCounter++; //advance Program Counter by one, execute next instruction on next loop
     }
