@@ -1,30 +1,40 @@
 #include <stdio.h>
+#include <stdbool.h>
 
 #define MEMSIZE 0x100
 #define MEMFILEPATH "/home/woegi/OneDrive/Projects/CPUSim/mem.bin" //"C:\\Users\\woegi\\OneDrive\\Projects\\CPUSim\\mem.bin"
 
 #define NOP 0x00    //no operation, do nothing
-#define ADDA 0x80   //Add value of ACC to ACC
-#define ADDB 0x81   //Add value of REG_B to ACC //B = Register for Teletype Interrupt
-#define ADDC 0x82   //Add value of REG_C to ACC
-#define ADDD 0x83   //Add value of REG_D to ACC
-#define ADDE 0x84   //Add value of REG_E to ACC
-#define ADDF 0x85   //Add value of REG_F to ACC //F = Flag Register
-#define ADDH 0x87   //Add value of REG_H to ACC //H = Memory Address Register High 0xXX00
-#define ADDM 0x87   //Add value of REG_L to ACC //L = Memory Address Register Low  0x00XX
-#define SUBA 0x8a   //Subtract value of ACC from ACC
-#define SUBB 0x8a   //Subtract value of REG_B from ACC
-#define SUBC 0x8a   //Subtract value of REG_C from ACC
-#define SUBD 0x8a   //Subtract value of REG_D from ACC
-#define SUBE 0x8a   //Subtract value of REG_E from ACC
-#define SUBF 0x8a   //Subtract value of REG_F from ACC
-#define SUBH 0x8a   //Subtract value of REG_H from ACC
-#define SUBL 0x8a   //Subtract value of REG_L from ACC
 #define HLT 0x0F    //halt execution
-#define LDA 0x2A    //load value (in next Memory address) into Accumulator
-#define STA 0x2B    //store value from accumulator in memory address (specified in the next memory address)
+#define LDA 0x2A    //load value into accumulator from memory address (specified in the next two memory addresses)
+#define LDAL 0x2B   //load value (in next Memory address) into Accumulator
+#define STA 0x2C    //store value from accumulator in memory address (specified in the next two memory addresses)
 #define LDAM 0x21   //load value (from Memory address specified in REG_H and REG_L) into ACC
 #define STAM 0x22   //store value from ACC in Memory address (specified in REG_H and REG_L)
+#define JMP  0x60
+#define JE   0x61   //jumps to address if zero flag set
+#define JNE  0x62   //jumps to address if zero flag not set
+#define JLT  0x6a   //jumps to address if zero flag not set AND sign flag not set
+#define JGT  0x6f   //jumps to address if zero flag not set AND sign flag set
+
+
+/*
+ * ADD AND SUB INSTRUCTION
+ * 8x ADD || SUB
+ *
+ * A  x0  || x8
+ * B  x1  || x9
+ * C  x2  || xa
+ * D  x3  || xb
+ * E  x4  || xc
+ * F  x5  || xd
+ * H  x6  || xe
+ * L  x7  || xf
+ *
+ * 0x80 - 0x8f reserved for ADD and SUB operations
+ * e.g. 0x8c = SUB A,E = subtract the value in E from the value in A
+*/
+
 
 /*
  * MOV INSTRUCTION
@@ -42,8 +52,9 @@
  * M x7 || xf
  *
  * 0x30 - 0x6f reserved for MOV operations
- * eg. 0x5c = MOV F,E
+ * e.g. 0x5c = MOV F,E = copy the value of E into F
  */
+
 
 
 unsigned int ProgramCounter = 0;
@@ -52,11 +63,22 @@ unsigned char REG_B = 0;    //used by Teletype interrupt to print char to screen
 unsigned char REG_C = 0;
 unsigned char REG_D = 0;
 unsigned char REG_E = 0;
-unsigned char REG_F = 0;    //Flag Register
+
+/*Flag Register
+*  7 6 5 4 3 2 1 0
+*  S Z 0 0 0 P 0 C
+*  S: Sign Flag, 1 if result of previous operation is positive
+*  Z: Zero Flag, 1 of result of previous operation is zero
+*  P: Parity indicates amount of 1s in operation in binary, 1 if result has even number of 1s
+*  C: Carry Flag, if carry was perfored in most significant bit i.e. 254+6 = 260 > 255 => C = 1
+*  0: unused, always zero
+*/
+unsigned char REG_F = 0;
 unsigned char REG_H = 0;    //Memory Register High XX00
 unsigned char REG_L = 0;    //Memory Register Low  00XX
 
-//TODO: Add Call and Return, JMP, JNE, JNZ, JZ, etc.
+//TODO: Add Call, Return, CMP, JMP, etc.
+//(CMP could just be a duplicate of SUB, flags are always filled accordingly so JMP, JLT, etc. can use them)
 
 unsigned char RAM[MEMSIZE];
 
@@ -84,7 +106,97 @@ void printDebugInfo(){
     printf("========================================================\n");
 }
 
-int MOV(char OP){
+unsigned char * getREGTwo(char digitTwo){
+    switch(digitTwo){
+        case 0x00:
+        case 0x08:
+            return &ACC;
+        case 0x01:
+        case 0x09:
+            return &REG_B;
+        case 0x02:
+        case 0x0a:
+            return &REG_C;
+        case 0x03:
+        case 0x0b:
+            return &REG_D;
+        case 0x04:
+        case 0x0c:
+            return &REG_E;
+        case 0x05:
+        case 0x0d:
+            return &REG_F;
+        case 0x06:
+        case 0x0e:
+            return &REG_H;
+        case 0x07:
+        case 0x0f:
+        default:
+            return &REG_L;
+    }
+}
+
+void setParity(unsigned char *n)
+{
+    bool parity = 0;
+    while (*n)
+    {
+        parity = !parity;
+        *n = *n & (*n - 1);
+    }
+    if(parity) {
+        REG_F |= 0b00000100;
+    }
+    else{
+        REG_F &= 0b11111011;
+    }
+}
+
+int ADDSUB(unsigned char OP){
+    char digitOne = (OP/0x10)*0x10;
+    char digitTwo = OP-(digitOne);
+    int isTwoHigh = 0;
+    if(digitTwo>0x07){
+        isTwoHigh = 1;
+    }
+    unsigned char *REGOne;
+    REGOne = &ACC;
+    unsigned char *REGTwo;
+    REGTwo = getREGTwo(digitTwo);
+    if(isTwoHigh){
+        if(*REGTwo == *REGOne){
+            *REGOne = 0;
+            REG_F = 0b01000000; //set zero flag 1
+        }
+        else if(*REGTwo > *REGOne){
+            *REGOne = *REGTwo-*REGOne;
+            REG_F &= 0b00111111; //set sign and zero flags 0
+            setParity(REGOne);
+        }
+        else{
+            *REGOne -= *REGTwo;
+            REG_F &= 0b00111111; //set sign and zero flags 0
+            setParity(REGOne);
+        }
+    }
+    else{
+        if(*REGOne + *REGTwo > 255){
+            *REGOne = *REGOne + *REGTwo - 255;
+            REG_F |= 0b10000001;    //set sign and carry flags 1
+            REG_F &= 0b10111111;    //set zero flag 0
+            setParity(REGOne);
+        }
+        else{
+            *REGOne = *REGOne+ *REGTwo;
+            REG_F |= 0b10000000; //set sign flag 1
+            REG_F &= 0b10111110; //set zero and carry flags 0
+            setParity(REGOne);
+        }
+    }
+    return 0;
+}
+
+int MOV(unsigned char OP){
     char digitOne = (OP/0x10)*0x10;
     char digitTwo = OP-(digitOne);
     int isTwoHigh = 0;
@@ -124,51 +236,23 @@ int MOV(char OP){
             else{
                 REGOne = &REG_H;
             }
+        default:
+            return 1;
     }
 
-    switch(digitTwo){
-        case 0x00:
-        case 0x08:
-            REGTwo = &ACC;
-            break;
-        case 0x01:
-        case 0x09:
-            REGTwo = &REG_B;
-            break;
-        case 0x02:
-        case 0x0a:
-            REGTwo = &REG_C;
-            break;
-        case 0x03:
-        case 0x0b:
-            REGTwo = &REG_D;
-            break;
-        case 0x04:
-        case 0x0c:
-            REGTwo = &REG_E;
-            break;
-        case 0x05:
-        case 0x0d:
-            REGTwo = &REG_F;
-            break;
-        case 0x06:
-        case 0x0e:
-            REGTwo = &REG_H;
-            break;
-        case 0x07:
-        case 0x0f:
-            REGTwo = &REG_L;
-            break;
-    }
+    REGTwo = getREGTwo(digitTwo);
 
     *REGOne = *REGTwo;
 
     return 0;
 }
 
-int getInstruction(char OP){
+int getInstruction(unsigned char OP){
     if(OP >= 0x30 && OP <= 0x7f){
         return MOV(OP);
+    }
+    else if (OP >= 0x80 && OP <= 0x8f){
+        return ADDSUB(OP);
     }
     return 1;
 }
@@ -184,13 +268,17 @@ int MainLoop(){
             case HLT:
                 printDebugInfo();
                 return 0;
-            case LDA:
+            case LDAL:
                 ACC = RAM[ProgramCounter+1];
                 ProgramCounter++;
                 break;
+            case LDA:
+                ACC = RAM[MEMADDR];
+                ProgramCounter+=2;
+                break;
             case STA:
-                RAM[RAM[ProgramCounter+1]] = ACC;
-                ProgramCounter++;
+                RAM[MEMADDR] = ACC;
+                ProgramCounter+=2;
                 break;
             case LDAM:
                 ACC = RAM[HLADDR];
@@ -198,8 +286,40 @@ int MainLoop(){
             case STAM:
                 RAM[HLADDR] = ACC;
                 break;
-            case ADDB:
-                ACC += REG_B;
+            case JMP:
+                    ProgramCounter = MEMADDR-1;
+                break;
+            case JNE:
+                if(!(REG_F & 0b01000000)){
+                    ProgramCounter = MEMADDR-1;
+                }
+                else{
+                    ProgramCounter+=2;
+                }
+                break;
+            case JE:
+                if(REG_F & 0b01000000){
+                    ProgramCounter = MEMADDR-1;
+                }
+                else{
+                    ProgramCounter+=2;
+                }
+                break;
+            case JGT:
+                if((REG_F & 0b01000000) && (REG_F & 0b10000000)){
+                    ProgramCounter = MEMADDR-1;
+                }
+                else{
+                    ProgramCounter+=2;
+                }
+                break;
+            case JLT:
+                if((REG_F & 0b01000000) && !(REG_F & 0b10000000)){
+                    ProgramCounter = MEMADDR-1;
+                }
+                else{
+                    ProgramCounter+=2;
+                }
                 break;
             default:
                 if(getInstruction(OP)){
