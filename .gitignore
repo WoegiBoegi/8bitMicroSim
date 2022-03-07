@@ -1,2 +1,8 @@
 CMakeLists.txt
 cmake-build-debug
+/.idea/.gitignore
+/.idea/CPUSim.iml
+/.idea/misc.xml
+/.idea/modules.xml
+/.idea/inspectionProfiles/Project_Default.xml
+/.idea/vcs.xml
