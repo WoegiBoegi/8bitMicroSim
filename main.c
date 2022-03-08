@@ -1,25 +1,35 @@
 #include <stdio.h>
 #include <stdbool.h>
-
+#include "BIOSSim.h"
 #define MEMSIZE 0x100
 #define MEMFILEPATH "/home/woegi/OneDrive/Projects/CPUSim/mem.bin" //"C:\\Users\\woegi\\OneDrive\\Projects\\CPUSim\\mem.bin"
 
-#define NOP 0x00    //no operation, do nothing
-#define HLT 0x0F    //halt execution
-#define LDA 0x2A    //load value into accumulator from memory address (specified in the next two memory addresses)
+#define NOP  0x00   //no operation, do nothing
+#define HLT  0x0F   //halt execution
+#define LDA  0x2A   //load value into accumulator from memory address (specified in the next two memory addresses)
 #define LDAL 0x2B   //load value (in next Memory address) into Accumulator
-#define STA 0x2C    //store value from accumulator in memory address (specified in the next two memory addresses)
+#define STA  0x2C   //store value from accumulator in memory address (specified in the next two memory addresses)
 #define LDAM 0x21   //load value (from Memory address specified in REG_H and REG_L) into ACC
 #define STAM 0x22   //store value from ACC in Memory address (specified in REG_H and REG_L)
-#define JMP  0x60
-#define JE   0x61   //jumps to address if zero flag set
-#define JNE  0x62   //jumps to address if zero flag not set
-#define JLT  0x6a   //jumps to address if zero flag not set AND sign flag not set
-#define JGT  0x6f   //jumps to address if zero flag not set AND sign flag set
-
+#define JMP  0x70   //jumps to address
+#define JE   0x71   //jumps to address if zero flag set
+#define JNE  0x72   //jumps to address if zero flag not set
+#define JLT  0x7a   //jumps to address if zero flag not set AND sign flag not set
+#define JGT  0x7f   //jumps to address if zero flag not set AND sign flag set
+#define INCA 0xA0   //increment value in Memory address (specified in the next two memory addresses)
+#define DECA 0xA1   //decrement value in Memory address (specified in the next two memory addresses)
+#define INCM 0xAA   //increment value in Memory address (specified in REG_H and REG_L)
+#define DECM 0xAB   //decrement value in Memory address (specified in REG_H and REG_L)
+#define CALL 0xB0   //jumps to address, saves address to return to later
+#define CAE  0xB1   //jumps to address if zero flag set, saves address to return to later
+#define CNE  0xB2   //jumps to address if zero flag not set, saves address to return to later
+#define CLT  0xBa   //jumps to address if zero flag not set AND sign flag not set, saves address to return to later
+#define CGT  0xBb   //jumps to address if zero flag not set AND sign flag set, saves address to return to later
+#define RET  0xBF   //returns to saved address
+#define INT  0x10   //calls the interrupt in saved in next address
 
 /*
- * ADD AND SUB INSTRUCTION
+ * ADD AND SUB INSTRUCTION      //CMP is just SUB shush
  * 8x ADD || SUB
  *
  * A  x0  || x8
@@ -55,11 +65,26 @@
  * e.g. 0x5c = MOV F,E = copy the value of E into F
  */
 
+/*
+ * INC AND DEC INSTRUCTIONS
+ * 9x INC || DEC
+ * A  x0  || x8
+ * B  x1  || x9
+ * C  x2  || xa
+ * D  x3  || xb
+ * E  x4  || xc
+ * F  x5  || xd
+ * H  x6  || xe
+ * L  x7  || xf
+ *
+ * 0x90 - 0x9f reserved for INC and DEC operations
+ * e.g. 0x94 = INC E = Increment the value in Register E (by one)
+ */
 
-
+unsigned int RetPC = 0;
 unsigned int ProgramCounter = 0;
 unsigned char ACC = 0;
-unsigned char REG_B = 0;    //used by Teletype interrupt to print char to screen buffer
+unsigned char REG_B = 0;
 unsigned char REG_C = 0;
 unsigned char REG_D = 0;
 unsigned char REG_E = 0;
@@ -68,17 +93,18 @@ unsigned char REG_E = 0;
 *  7 6 5 4 3 2 1 0
 *  S Z 0 0 0 P 0 C
 *  S: Sign Flag, 1 if result of previous operation is positive
-*  Z: Zero Flag, 1 of result of previous operation is zero
+*  Z: Zero Flag, 1 if result of previous operation is zero
 *  P: Parity indicates amount of 1s in operation in binary, 1 if result has even number of 1s
 *  C: Carry Flag, if carry was perfored in most significant bit i.e. 254+6 = 260 > 255 => C = 1
 *  0: unused, always zero
 */
 unsigned char REG_F = 0;
+
 unsigned char REG_H = 0;    //Memory Register High XX00
 unsigned char REG_L = 0;    //Memory Register Low  00XX
 
-//TODO: Add Call, Return, CMP, JMP, etc.
-//(CMP could just be a duplicate of SUB, flags are always filled accordingly so JMP, JLT, etc. can use them)
+//TODO: MVI, MVO, Implement Stack, interrupts, IO etc.
+//(CMP could just be a duplicate of SUB, flags are always filled accordingly so JE, JNE, etc. can use them)
 
 unsigned char RAM[MEMSIZE];
 
@@ -136,13 +162,14 @@ unsigned char * getREGTwo(char digitTwo){
     }
 }
 
-void setParity(unsigned char *n)
+void setParity(unsigned char *val)
 {
+    unsigned char n = *val;
     bool parity = 0;
-    while (*n)
+    while (n)
     {
         parity = !parity;
-        *n = *n & (*n - 1);
+        n = n & (n - 1);
     }
     if(parity) {
         REG_F |= 0b00000100;
@@ -166,7 +193,7 @@ int ADDSUB(unsigned char OP){
     if(isTwoHigh){
         if(*REGTwo == *REGOne){
             *REGOne = 0;
-            REG_F = 0b01000000; //set zero flag 1
+            REG_F |= 0b01000000; //set zero flag 1
         }
         else if(*REGTwo > *REGOne){
             *REGOne = *REGTwo-*REGOne;
@@ -175,7 +202,8 @@ int ADDSUB(unsigned char OP){
         }
         else{
             *REGOne -= *REGTwo;
-            REG_F &= 0b00111111; //set sign and zero flags 0
+            REG_F |= 0b10000000; //set sign flag 1 since result is positive
+            REG_F &= 0b10111111; //zero flag 0
             setParity(REGOne);
         }
     }
@@ -236,8 +264,6 @@ int MOV(unsigned char OP){
             else{
                 REGOne = &REG_H;
             }
-        default:
-            return 1;
     }
 
     REGTwo = getREGTwo(digitTwo);
@@ -247,18 +273,67 @@ int MOV(unsigned char OP){
     return 0;
 }
 
+int INCDEC(unsigned char OP){
+    char digitOne = (OP/0x10)*0x10;
+    char digitTwo = OP-(digitOne);
+    int isTwoHigh = 0;
+    if(digitTwo>0x07){
+        isTwoHigh = 1;
+    }
+
+    unsigned char *REG = getREGTwo(digitTwo);
+
+    if(isTwoHigh){ //digit two is between 0x8 and 0xf => decrement register
+        if(*REG == 0x00){ // if REG is 0x00, increment it and unset sign flag instead
+            *REG += 1;
+            REG_F &= 0b01111111;
+        }
+        else{ //decrement REG normally
+            *REG -= 1;
+        }
+    }
+    else{ //increment register
+        if(*REG == 0xFF){ // if REG is 0xFF, set it to 0x00 and set carry flag instead
+            *REG = 0x00;
+            REG_F |= 0b00000001;
+        }
+        else{ //increment REG normally
+            *REG += 1;
+        }
+    }
+    if(*REG == 0){
+        REG_F |= 0b01000000;
+    }
+    else{
+        REG_F &= 0b10111111;
+    }
+    setParity(REG);
+    return 0;
+}
+
 int getInstruction(unsigned char OP){
-    if(OP >= 0x30 && OP <= 0x7f){
+    if(OP >= 0x30 && OP <= 0x6f){
         return MOV(OP);
     }
     else if (OP >= 0x80 && OP <= 0x8f){
         return ADDSUB(OP);
     }
+    else if (OP >= 0x90 && OP <= 0x9f){
+        return INCDEC(OP);
+    }
     return 1;
+}
+
+void HandleBIOSInterrupt(unsigned char INTCODE){
+    //set ProgramCounter to Address that corresponds to interrupt handling code...
 }
 
 int MainLoop(){
     while(1){
+        unsigned char INTCODE = CheckForBIOSInterrupt();
+        if(INTCODE != 0x00){
+            HandleBIOSInterrupt(INTCODE);
+        }
         unsigned char OP = RAM[ProgramCounter];
         unsigned int HLADDR = REG_H*0x100+REG_L;
         unsigned int MEMADDR = RAM[ProgramCounter+1]*0x100+RAM[ProgramCounter+2];
@@ -268,6 +343,10 @@ int MainLoop(){
             case HLT:
                 printDebugInfo();
                 return 0;
+            case INT:
+                HandleCPUInterrupt(RAM[ProgramCounter+1],ACC);
+                ProgramCounter++;
+                break;
             case LDAL:
                 ACC = RAM[ProgramCounter+1];
                 ProgramCounter++;
@@ -287,10 +366,18 @@ int MainLoop(){
                 RAM[HLADDR] = ACC;
                 break;
             case JMP:
-                    ProgramCounter = MEMADDR-1;
+            case CALL:
+                if(OP == CALL){
+                    RetPC = ProgramCounter+2;
+                }
+                ProgramCounter = MEMADDR-1;
                 break;
             case JNE:
+            case CNE:
                 if(!(REG_F & 0b01000000)){
+                    if(OP == CNE){
+                        RetPC = ProgramCounter+2;
+                    }
                     ProgramCounter = MEMADDR-1;
                 }
                 else{
@@ -298,7 +385,11 @@ int MainLoop(){
                 }
                 break;
             case JE:
+            case CAE:
                 if(REG_F & 0b01000000){
+                    if(OP == CAE){
+                        RetPC = ProgramCounter+2;
+                    }
                     ProgramCounter = MEMADDR-1;
                 }
                 else{
@@ -306,7 +397,11 @@ int MainLoop(){
                 }
                 break;
             case JGT:
+            case CGT:
                 if((REG_F & 0b01000000) && (REG_F & 0b10000000)){
+                    if(OP == CGT){
+                        RetPC = ProgramCounter+2;
+                    }
                     ProgramCounter = MEMADDR-1;
                 }
                 else{
@@ -314,12 +409,73 @@ int MainLoop(){
                 }
                 break;
             case JLT:
+            case CLT:
                 if((REG_F & 0b01000000) && !(REG_F & 0b10000000)){
+                    if(OP == CLT){
+                        RetPC = ProgramCounter+2;
+                    }
                     ProgramCounter = MEMADDR-1;
                 }
                 else{
                     ProgramCounter+=2;
                 }
+                break;
+            case RET:
+                ProgramCounter = RetPC;
+                break;
+            case INCA:
+                if(RAM[MEMADDR] == 0xFF){
+                    RAM[MEMADDR] = 0x00;
+                    REG_F |= 0b00000001;
+                }
+                else{
+                    RAM[MEMADDR] += 1;
+                }
+                setParity(&RAM[MEMADDR]);
+                ProgramCounter+=2;
+                break;
+            case DECA:
+                if(RAM[MEMADDR] == 0x00){
+                    RAM[MEMADDR] += 1;
+                    REG_F &= 0b01111111;
+                }
+                else{
+                    RAM[MEMADDR] -=1;
+                    if(RAM[MEMADDR] == 0x00){
+                        REG_F |= 0b01000000;
+                    }
+                    else{
+                        REG_F &= 0b10111111;
+                    }
+                }
+                setParity(&RAM[MEMADDR]);
+                ProgramCounter+=2;
+                break;
+            case INCM:
+                if(RAM[HLADDR] == 0xFF){
+                    RAM[HLADDR] = 0x00;
+                    REG_F &= 0b00000001;
+                }
+                else{
+                    RAM[HLADDR] += 1;
+                }
+                setParity(&RAM[HLADDR]);
+                break;
+            case DECM:
+                if(RAM[HLADDR] == 0x00){
+                    RAM[HLADDR] += 1;
+                    REG_F &= 0b01111111;
+                }
+                else{
+                    RAM[HLADDR] -=1;
+                    if(RAM[HLADDR] == 0x00){
+                        REG_F |= 0b01000000;
+                    }
+                    else{
+                        REG_F &= 0b10111111;
+                    }
+                }
+                setParity(&RAM[HLADDR]);
                 break;
             default:
                 if(getInstruction(OP)){
