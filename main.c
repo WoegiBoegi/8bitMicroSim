@@ -103,7 +103,7 @@ unsigned char REG_F = 0;
 unsigned char REG_H = 0;    //Memory Register High XX00
 unsigned char REG_L = 0;    //Memory Register Low  00XX
 
-//TODO: MVI, MVO, Implement Stack, interrupts, IO etc.
+//TODO: MVI, MVO, Implement Stack, IO, Debug mode, Assembler => Keyboard interrupt
 //(CMP could just be a duplicate of SUB, flags are always filled accordingly so JE, JNE, etc. can use them)
 
 unsigned char RAM[MEMSIZE];
