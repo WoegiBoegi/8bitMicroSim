@@ -7,4 +7,5 @@
 
 #endif //CPUSIM_BIOSSIM_H
 unsigned char CheckForBIOSInterrupt();
+unsigned char GetInterruptArg(unsigned char INTCODE);
 void HandleCPUInterrupt(unsigned char INTCODE, unsigned char ACC);
