@@ -21,6 +21,8 @@
 #define JNE  0x72   //jumps to address if zero flag not set
 #define JLT  0x7a   //jumps to address if zero flag not set AND sign flag not set
 #define JGT  0x7f   //jumps to address if zero flag not set AND sign flag set
+#define JIC  0x7d   //jumps to address if carry flag set
+#define JHL  0x7e   //jumps to address defined in REG_H and REG_L
 #define INA  0xA0   //increment value in Memory address (specified in the next two memory addresses)
 #define DEA  0xA1   //decrement value in Memory address (specified in the next two memory addresses)
 #define INM  0xAA   //increment value in Memory address (specified in REG_H and REG_L)
@@ -30,8 +32,12 @@
 #define CNE  0xB2   //jumps to address if zero flag not set, saves address to return to later
 #define CLT  0xBa   //jumps to address if zero flag not set AND sign flag not set, saves address to return to later
 #define CGT  0xBb   //jumps to address if zero flag not set AND sign flag set, saves address to return to later
+#define CIC  0xBd   //jumps to address if carry flag set, saves address to return to later
 #define RET  0xBF   //returns to saved address
-#define INT  0x10   //calls the interrupt in saved in next address
+#define INT  0x1F   //calls the interrupt in saved in next address
+#define RST  0x2F   //soft resets the computer
+#define IEN  0x2D   //sets interrupt-enable flag 1
+#define IDN  0x2E   //sets interrupt-enable flag 0
 
 /*
  * Cx Stack pointer operations
@@ -134,6 +140,21 @@
  * 0xF0 - 0xFF reserved for SPR and SBR => e.g. 0xFC = Pull (bump) value from stack into REG_E
  */
 
+/*
+ * CMP INSTRUCTION
+ * 1X CMP A
+ * X0     A
+ * X1     B
+ * X2     C
+ * X3     D
+ * X4     E
+ * X5     F
+ * X6     H
+ * X7     L
+ *
+ * 0x10 - 0x17 reserved for CMP => e.g. 0x13 = Compare REG_A with REG_D
+ */
+
 unsigned char StackPointer = STACKSIZE-1; //0x0000 - STACKSIZE reserved for stack
 unsigned int ProgramCounter = ENTRYPOINT; //starts at ENTRYPOINT
 unsigned char ACC = 0;
@@ -144,11 +165,12 @@ unsigned char REG_E = 0;
 
 /*Flag Register
 *  7 6 5 4 3 2 1 0
-*  S Z 0 0 0 P 0 C
+*  S Z 0 I 0 P 0 C
 *  S: Sign Flag, 1 if result of previous operation is positive
 *  Z: Zero Flag, 1 if result of previous operation is zero
-*  P: Parity indicates amount of 1s in operation in binary, 1 if result has even number of 1s
+*  P: Parity indicates amount of 1s in operation in binary, 1 if result has even amount of 1s
 *  C: Carry Flag, if carry was perfored in most significant bit i.e. 254+6 = 260 > 255 => C = 1
+*  I: Interrupt enable/disable 1 = interrupt enabled
 *  0: unused, always zero
 */
 unsigned char REG_F = 0;
@@ -157,7 +179,6 @@ unsigned char REG_H = 0;    //Memory Register High XX00
 unsigned char REG_L = 0;    //Memory Register Low  00XX
 
 //TODO: Interrupts + IO, Debug mode, Assembler => e.g. Keyboard interrupt
-//(CMP could just be a duplicate of SUB, flags are always filled accordingly so JIE, JNE, etc. can use them)
 
 unsigned char MEM[MEMSIZE];
 
@@ -189,7 +210,7 @@ void PushOnStack(unsigned char value){
     MEM[StackPointer] = value;
     if(StackPointer == 0){
         StackPointer = STACKSIZE-1;
-        printf("STACKOVERFLOW OCCURED\n");
+        printf("STACKUNDERFLOW OCCURED\n");
     }
     else{
         StackPointer--;
@@ -270,16 +291,17 @@ int ADDSUB(unsigned char OP){
         if(*REGTwo == *REGOne){
             *REGOne = 0;
             REG_F |= 0b01000000; //set zero flag 1
+            REG_F &= 0b01111110; //set sign and carry flags 0
         }
         else if(*REGTwo > *REGOne){
             *REGOne = *REGTwo-*REGOne;
-            REG_F &= 0b00111111; //set sign and zero flags 0
+            REG_F &= 0b00111110; //set sign, zero and carry flags 0
             setParity(REGOne);
         }
         else{
             *REGOne -= *REGTwo;
             REG_F |= 0b10000000; //set sign flag 1 since result is positive
-            REG_F &= 0b10111111; //zero flag 0
+            REG_F &= 0b10111110; //set zero and carry flags 0
             setParity(REGOne);
         }
     }
@@ -296,6 +318,29 @@ int ADDSUB(unsigned char OP){
             REG_F &= 0b10111110; //set zero and carry flags 0
             setParity(REGOne);
         }
+    }
+    return 0;
+}
+
+int CMP(unsigned char OP){
+    char digitOne = (OP/0x10)*0x10;
+    char digitTwo = OP-(digitOne);
+
+    unsigned char *REGOne;
+    REGOne = &ACC;
+    unsigned char *REGTwo;
+    REGTwo = getREGTwo(digitTwo);
+
+    if(*REGTwo > *REGOne){
+        REG_F &= 0b00111110; //set sign, zero and carry flags 0
+    }
+    else if (*REGTwo == *REGOne){
+        REG_F |= 0b01000000; //set zero flag 1
+        REG_F &= 0b01111110; //set sign and carry flags 0
+    }
+    else{ // REGTwo can only be less than REGOne
+        REG_F |= 0b10000000; //set sign flag 1 since result is positive
+        REG_F &= 0b10111110; //set zero and carry flags 0
     }
     return 0;
 }
@@ -454,7 +499,7 @@ int REGMOV(unsigned char OP, unsigned int MEMADDR, unsigned int HLADDR, unsigned
     return 0;
 }
 
-int SOPREG(unsigned char OP, unsigned int MEMADDR, unsigned int HLADDR, unsigned char nextLIT){
+int SOPREG(unsigned char OP){
     char digitOne = (OP/0x10)*0x10;
     char digitTwo = OP-(digitOne);
     int isTwoHigh = 0;
@@ -473,7 +518,10 @@ int SOPREG(unsigned char OP, unsigned int MEMADDR, unsigned int HLADDR, unsigned
 }
 
 int getInstruction(unsigned char OP, unsigned int MEMADDR, unsigned int HLADDR, unsigned char nextLIT){
-    if(OP >= 0x30 && OP <= 0x6f){
+    if(OP >= 0x10 && OP <= 0x17){
+        return CMP(OP);
+    }
+    else if(OP >= 0x30 && OP <= 0x6f){
         return MOV(OP);
     }
     else if (OP >= 0x80 && OP <= 0x8f){
@@ -489,15 +537,11 @@ int getInstruction(unsigned char OP, unsigned int MEMADDR, unsigned int HLADDR, 
         return REGMOV(OP, MEMADDR, HLADDR, nextLIT);
     }
     else if (OP >= 0xF0 && OP <= 0xFF){
-        return SOPREG(OP, MEMADDR, HLADDR, nextLIT);
+        return SOPREG(OP);
     }
     else {
         return 1;
     }
-}
-
-void HandleBIOSInterrupt(unsigned char INTCODE){
-    //set ProgramCounter to Address that corresponds to interrupt handling code...
 }
 
 void Push16bitValInStack(unsigned int value){
@@ -505,6 +549,12 @@ void Push16bitValInStack(unsigned int value){
     unsigned char LowByte = value-HighByte;
     PushOnStack(LowByte);
     PushOnStack(HighByte);
+}
+
+void HandleBIOSInterrupt(unsigned char INTCODE){
+    Push16bitValInStack(ProgramCounter);
+    ProgramCounter = STACKSIZE + (INTCODE*0xF);
+    //set ProgramCounter to Address that corresponds to interrupt handling code...
 }
 
 unsigned int Pull16bitValFromStack(){
@@ -517,7 +567,7 @@ unsigned int Pull16bitValFromStack(){
 int MainLoop(){
     while(1){
         unsigned char INTCODE = CheckForBIOSInterrupt();
-        if(INTCODE != 0x00){
+        if(INTCODE != 0x00 && (REG_F & 0b00010000)){
             HandleBIOSInterrupt(INTCODE);
         }
         unsigned char OP = MEM[ProgramCounter];
@@ -529,6 +579,21 @@ int MainLoop(){
             case HLT:
                 printDebugInfo();
                 return 0;
+            case RST:
+                StackPointer = STACKSIZE-1; 
+                ProgramCounter = ENTRYPOINT-1;
+                ACC = 0;
+                REG_B = 0;
+                REG_C = 0;
+                REG_D = 0;
+                REG_E = 0;
+                break;
+            case IEN:
+                REG_F |= 0b00010000;
+                break;
+            case IDN:
+                REG_F &= 0b11101111;
+                break;
             case INT:
                 HandleCPUInterrupt(MEM[ProgramCounter + 1], ACC);
                 ProgramCounter++;
@@ -550,6 +615,9 @@ int MainLoop(){
                 break;
             case STM:
                 MEM[HLADDR] = ACC;
+                break;
+            case JHL:
+                ProgramCounter = HLADDR-1;
                 break;
             case JMP:
             case CAL:
@@ -584,7 +652,7 @@ int MainLoop(){
                 break;
             case JGT:
             case CGT:
-                if((REG_F & 0b01000000) && (REG_F & 0b10000000)){
+                if(!(REG_F & 0b01000000) && (REG_F & 0b10000000)){
                     if(OP == CGT){
                         Push16bitValInStack(ProgramCounter+2);
                     }
@@ -596,8 +664,20 @@ int MainLoop(){
                 break;
             case JLT:
             case CLT:
-                if((REG_F & 0b01000000) && !(REG_F & 0b10000000)){
+                if(!(REG_F & 0b01000000) && !(REG_F & 0b10000000)){
                     if(OP == CLT){
+                        Push16bitValInStack(ProgramCounter+2);
+                    }
+                    ProgramCounter = MEMADDR-1;
+                }
+                else{
+                    ProgramCounter+=2;
+                }
+                break;
+            case JIC:
+            case CIC:
+                if(REG_F &0b00000001){
+                    if(OP == CIC){
                         Push16bitValInStack(ProgramCounter+2);
                     }
                     ProgramCounter = MEMADDR-1;

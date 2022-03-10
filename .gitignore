@@ -7,3 +7,5 @@ cmake-build-debug
 /.idea/inspectionProfiles/Project_Default.xml
 /.idea/vcs.xml
 /.idea/8bitMicroSim.iml
+/Instructions.png
+/Instructions.xlsx
