@@ -553,7 +553,9 @@ void Push16bitValInStack(unsigned int value){
 
 void HandleBIOSInterrupt(unsigned char INTCODE){
     Push16bitValInStack(ProgramCounter);
-    ProgramCounter = STACKSIZE + (INTCODE*0xF);
+    PushOnStack(ACC);
+    ACC = GetInterruptArg(INTCODE);
+    ProgramCounter = STACKSIZE + ((INTCODE-1)*0xF);
     //set ProgramCounter to Address that corresponds to interrupt handling code...
 }
 
