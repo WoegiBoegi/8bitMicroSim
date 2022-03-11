@@ -1,11 +1,11 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include "BIOSSim.h"
-//0x0000 - 0x001F for stack (32 bytes)
-//0x0020 - 0x003F for interrupt handling (32 bytes)
-#define INTHANDSIZE 0x20
-#define MEMSIZE 0x100
-#define STACKSIZE 0x20
+//0x0000 - 0x001F for stack (32 bytes) !INVALID!
+//0x0020 - 0x003F for interrupt handling (32 bytes) !INVALID!
+#define INTHANDSIZE 0x80  //8 interrupts, 16 bytes each => 128 bytes = 0x80
+#define MEMSIZE 0x10000  //64kb total memory = 0x10000
+#define STACKSIZE 0x100 //256 bytes of stack = 0x100
 #define ENTRYPOINT (STACKSIZE + INTHANDSIZE)
 #define MEMFILEPATH "/home/woegi/OneDrive/Projects/8bitMicroSim/mem.bin" //"C:\\Users\\woegi\\OneDrive\\Projects\\CPUSim\\mem.bin"
 
@@ -204,11 +204,52 @@ unsigned char MEM[MEMSIZE];
 void printMEM(){
     printf("--------------------------------------------------------\n");
     printf("      00 01 02 03  04 05 06 07  08 09 0a 0b  0c 0d 0e 0f\n");
-
     for(int ADDR = 0x00; ADDR <= (MEMSIZE-0x10); ADDR += 0x10){
-        printf("%04x  %02x %02x %02x %02x  %02x %02x %02x %02x  %02x %02x %02x %02x  %02x %02x %02x %02x\n", ADDR, MEM[ADDR + 0x00], MEM[ADDR + 0x01], MEM[ADDR + 0x02], MEM[ADDR + 0x03], MEM[ADDR + 0x04], MEM[ADDR + 0x05], MEM[ADDR + 0x06], MEM[ADDR + 0x07], MEM[ADDR + 0x08], MEM[ADDR + 0x09], MEM[ADDR + 0x0a], MEM[ADDR + 0x0b], MEM[ADDR + 0x0c], MEM[ADDR + 0x0d], MEM[ADDR + 0x0e], MEM[ADDR + 0x0f]);
+        int linesum = MEM[ADDR + 0x00]+MEM[ADDR + 0x01]+MEM[ADDR + 0x02]+MEM[ADDR + 0x03]+MEM[ADDR + 0x04]+MEM[ADDR + 0x05]+MEM[ADDR + 0x06]+MEM[ADDR + 0x07]+MEM[ADDR + 0x08]+MEM[ADDR + 0x09]+MEM[ADDR + 0x0a]+MEM[ADDR + 0x0b]+MEM[ADDR + 0x0c]+MEM[ADDR + 0x0d]+MEM[ADDR + 0x0e]+MEM[ADDR + 0x0f];
+        if(linesum > 0){
+            printf("%04x  %02x %02x %02x %02x  %02x %02x %02x %02x  %02x %02x %02x %02x  %02x %02x %02x %02x\n", ADDR, MEM[ADDR + 0x00], MEM[ADDR + 0x01], MEM[ADDR + 0x02], MEM[ADDR + 0x03], MEM[ADDR + 0x04], MEM[ADDR + 0x05], MEM[ADDR + 0x06], MEM[ADDR + 0x07], MEM[ADDR + 0x08], MEM[ADDR + 0x09], MEM[ADDR + 0x0a], MEM[ADDR + 0x0b], MEM[ADDR + 0x0c], MEM[ADDR + 0x0d], MEM[ADDR + 0x0e], MEM[ADDR + 0x0f]);
+        }
     }
     printf("--------------------------------------------------------\n");
+}
+
+void printFLAGs(){
+    printf("Flag Register Breakdown:\n");
+    printf("S Z 0 I 0 P 0 C\n");
+    if(REG_F & 0b10000000){
+        printf("1 ");
+    }
+    else{
+        printf("0 ");
+    }
+    if(REG_F & 0b01000000){
+        printf("1 ");
+    }
+    else{
+        printf("0 ");
+    }
+    printf("0 ");
+    if(REG_F & 0b00010000){
+        printf("1 ");
+    }
+    else{
+        printf("0 ");
+    }
+    printf("0 ");
+    if(REG_F & 0b00000100){
+        printf("1 ");
+    }
+    else{
+        printf("0 ");
+    }
+    printf("0 ");
+    if(REG_F & 0b00000001){
+        printf("1\n");
+    }
+    else{
+        printf("0\n");
+    }
+
 }
 
 void printDebugInfo(){
@@ -220,7 +261,8 @@ void printDebugInfo(){
            "value in Register C:  %02x\nvalue in Register D:  %02x\nvalue in Register E:  %02x\n"
            "value in Register F:  %02x\nvalue in Register H:  %02x\nvalue in Register L:  %02x\n",
            ACC,REG_B,REG_C,REG_D,REG_E,REG_F,REG_H,REG_L);
-    printf("dumping Memory:\n");
+    printFLAGs();
+    printf("dumping Memory: (lines with all 00s are left out)\n");
     printMEM();
     printf("========================================================\n");
 }
@@ -390,6 +432,7 @@ int MOV(unsigned char OP){
             else{
                 REGOne = &REG_C;
             }
+            break;
         case 0x50:
             if(isTwoHigh){
                 REGOne = &REG_F;
@@ -397,6 +440,7 @@ int MOV(unsigned char OP){
             else{
                 REGOne = &REG_E;
             }
+            break;
         case 0x60:
             if(isTwoHigh){
                 REGOne = &REG_L;
@@ -404,6 +448,7 @@ int MOV(unsigned char OP){
             else{
                 REGOne = &REG_H;
             }
+            break;
     }
 
     REGTwo = getREGTwo(digitTwo);
@@ -539,7 +584,7 @@ int SOPREG(unsigned char OP){
 int INTRAISE(unsigned char OP){
     char digitOne = (OP/0x10)*0x10;
     char digitTwo = OP-(digitOne);
-    HandleCPUInterrupt(digitTwo-0x5,ACC);
+    HandleCPUInterrupt(digitTwo-0x4,ACC);
     return 0;
 }
 
@@ -642,19 +687,19 @@ void Push16bitValInStack(unsigned int value){
     PushOnStack(HighByte);
 }
 
+unsigned int Pull16bitValFromStack(){
+    unsigned char LowByte = PullFromStack();
+    unsigned char HighByte = PullFromStack();
+    unsigned int value = HighByte*0x100+LowByte;
+    return value;
+}
+
 void HandleBIOSInterrupt(unsigned char INTCODE){
     Push16bitValInStack(ProgramCounter);
     PushOnStack(ACC);
     ACC = GetInterruptArg(INTCODE);
     ProgramCounter = STACKSIZE + ((INTCODE-1)*0xF);
     //set ProgramCounter to Address that corresponds to interrupt handling code...
-}
-
-unsigned int Pull16bitValFromStack(){
-    unsigned char LowByte = PullFromStack();
-    unsigned char HighByte = PullFromStack();
-    unsigned int value = HighByte*0x100+LowByte;
-    return value;
 }
 
 int MainLoop(){
@@ -687,10 +732,6 @@ int MainLoop(){
             case IDN:
                 REG_F &= 0b11101111;
                 break;
-            //case INT:
-            //    HandleCPUInterrupt(MEM[ProgramCounter + 1], ACC);
-            //    ProgramCounter++;
-            //    break;
             case LDL:
                 ACC = MEM[ProgramCounter + 1];
                 ProgramCounter++;
