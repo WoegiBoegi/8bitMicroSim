@@ -10,7 +10,7 @@ unsigned char GetInterruptArg(unsigned char INTCODE){
 
 void HandleCPUInterrupt(unsigned char INTCODE, unsigned char ACC){
     //depending on INTCODE, do something with value in ACC, e.g. print char to screen, move cursor, etc.
-    if(INTCODE == 0x10){
+    if(INTCODE == 0x01){
         printf("%c",ACC);
     }
 }

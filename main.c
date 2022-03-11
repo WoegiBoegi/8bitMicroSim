@@ -10,34 +10,34 @@
 #define MEMFILEPATH "/home/woegi/OneDrive/Projects/8bitMicroSim/mem.bin" //"C:\\Users\\woegi\\OneDrive\\Projects\\CPUSim\\mem.bin"
 
 #define NOP  0x00   //no operation, do nothing
-#define HLT  0x0F   //halt execution
-#define LDA  0x2A   //load value into accumulator from memory address (specified in the next two memory addresses)
-#define LDL  0x2B   //load value (in next Memory address) into Accumulator
-#define STA  0x2C   //store value from accumulator in memory address (specified in the next two memory addresses)
-#define LDM  0x21   //load value (from Memory address specified in REG_H and REG_L) into ACC
-#define STM  0x22   //store value from ACC in Memory address (specified in REG_H and REG_L)
+#define HLT  0x01   //halt execution
+#define LDA  0x22   //load value into accumulator from memory address (specified in the next two memory addresses)
+#define LDL  0x23   //load value (in next Memory address) into Accumulator
+#define STA  0x24   //store value from accumulator in memory address (specified in the next two memory addresses)
+#define LDM  0x20   //load value (from Memory address specified in REG_H and REG_L) into ACC
+#define STM  0x21   //store value from ACC in Memory address (specified in REG_H and REG_L)
 #define JMP  0x70   //jumps to address
 #define JIE  0x71   //jumps to address if zero flag set
 #define JNE  0x72   //jumps to address if zero flag not set
-#define JLT  0x7a   //jumps to address if zero flag not set AND sign flag not set
-#define JGT  0x7f   //jumps to address if zero flag not set AND sign flag set
-#define JIC  0x7d   //jumps to address if carry flag set
-#define JHL  0x7e   //jumps to address defined in REG_H and REG_L
+#define JLT  0x73   //jumps to address if zero flag not set AND sign flag set
+#define JGT  0x76   //jumps to address if zero flag not set AND sign flag not set
+#define JIC  0x74   //jumps to address if carry flag set
+#define JHL  0x75   //jumps to address defined in REG_H and REG_L
 #define INA  0xA0   //increment value in Memory address (specified in the next two memory addresses)
 #define DEA  0xA1   //decrement value in Memory address (specified in the next two memory addresses)
-#define INM  0xAA   //increment value in Memory address (specified in REG_H and REG_L)
-#define DEM  0xAB   //decrement value in Memory address (specified in REG_H and REG_L)
+#define INM  0xA2   //increment value in Memory address (specified in REG_H and REG_L)
+#define DEM  0xA3   //decrement value in Memory address (specified in REG_H and REG_L)
 #define CAL  0xB0   //jumps to address, saves address to return to later
 #define CAE  0xB1   //jumps to address if zero flag set, saves address to return to later
 #define CNE  0xB2   //jumps to address if zero flag not set, saves address to return to later
-#define CLT  0xBa   //jumps to address if zero flag not set AND sign flag not set, saves address to return to later
-#define CGT  0xBb   //jumps to address if zero flag not set AND sign flag set, saves address to return to later
-#define CIC  0xBd   //jumps to address if carry flag set, saves address to return to later
-#define RET  0xBF   //returns to saved address
-#define INT  0x1F   //calls the interrupt in saved in next address
-#define RST  0x2F   //soft resets the computer
-#define IEN  0x2D   //sets interrupt-enable flag 1
-#define IDN  0x2E   //sets interrupt-enable flag 0
+#define CLT  0xB3   //jumps to address if zero flag not set AND sign flag not set, saves address to return to later
+#define CIC  0xB4   //jumps to address if carry flag set, saves address to return to later
+#define CHL  0xB5   //jumps to address defined in REG_H and REG_L, saves address to return to later
+#define CGT  0xB6   //jumps to address if zero flag not set AND sign flag set, saves address to return to later
+#define RET  0xB7   //returns to saved address
+#define RST  0x04   //soft resets the computer
+#define IEN  0x02   //sets interrupt-enable flag 1
+#define IDN  0x03   //sets interrupt-enable flag 0
 
 /*
  * Cx Stack pointer operations
@@ -142,7 +142,7 @@
 
 /*
  * CMP INSTRUCTION
- * 1X CMP A
+ * 1X CMP A,
  * X0     A
  * X1     B
  * X2     C
@@ -153,6 +153,25 @@
  * X7     L
  *
  * 0x10 - 0x17 reserved for CMP => e.g. 0x13 = Compare REG_A with REG_D
+ */
+
+/*
+ * 1X NND A,
+ * 2X NOT
+ * 7X AND A,
+ * AX ORA A,
+ * BX XOR A,
+ *
+ * X8     A
+ * X9     B
+ * XA     C
+ * XB     D
+ * XC     E
+ * XD     F
+ * XE     H
+ * XF     L
+ *
+ * e.g. 7D = Bitwise AND between Accumulator and REG_F, result sored in Accumulator
  */
 
 unsigned char StackPointer = STACKSIZE-1; //0x0000 - STACKSIZE reserved for stack
@@ -218,7 +237,6 @@ void PushOnStack(unsigned char value){
 }
 
 unsigned char PullFromStack(){
-    unsigned char value = MEM[StackPointer];
     if(StackPointer == STACKSIZE-1){
         StackPointer = 0;
         printf("STACKOVERFLOW OCCURED\n");
@@ -226,6 +244,7 @@ unsigned char PullFromStack(){
     else{
         StackPointer++;
     }
+    unsigned char value = MEM[StackPointer];
     return value;
 }
 
@@ -517,18 +536,90 @@ int SOPREG(unsigned char OP){
     return 0;
 }
 
+int INTRAISE(unsigned char OP){
+    char digitOne = (OP/0x10)*0x10;
+    char digitTwo = OP-(digitOne);
+    HandleCPUInterrupt(digitTwo-0x5,ACC);
+    return 0;
+}
+
+int BitwiseOP(unsigned char OP){
+    unsigned char digitOne = (OP/0x10)*0x10;
+    char digitTwo = OP-(digitOne);
+    unsigned char *REGTwo = getREGTwo(digitTwo);
+    switch(digitOne){
+        case 0x10: //NAND A,REG
+            ACC = ~(ACC & *REGTwo);
+            break;
+        case 0x20: //NOT REG
+            *REGTwo = ~*REGTwo;
+            break;
+        case 0x70: //AND A,REG
+            ACC = (ACC & *REGTwo);
+            break;
+        case 0xA0: //ORA A,REG
+            ACC = (ACC | *REGTwo);
+            break;
+        case 0xB0: //XOR A,REG
+            ACC = (ACC ^ *REGTwo);
+            break;
+    }
+    REG_F |= 0b10000000; //set sign flag 1
+    REG_F &= 0b11111110; //set carry flag 0
+    if(digitOne == 0x20){
+        setParity(REGTwo);
+        if(*REGTwo == 0){
+            REG_F |= 0b01000000; // set zero flag 1
+            REG_F &= 0b01111111; // set sign flag 0
+        }
+        else{
+            REG_F &= 0b10111111; // set zero flag 0
+        }
+    }
+    else{
+    setParity(&ACC);
+        if(ACC == 0){
+            REG_F |= 0b01000000; // set zero flag 1
+            REG_F &= 0b01111111; // set sign flag 0
+        }
+        else{
+            REG_F &= 0b10111111; // set zero flag 0
+        }
+    }
+
+    return 0;
+}
+
 int getInstruction(unsigned char OP, unsigned int MEMADDR, unsigned int HLADDR, unsigned char nextLIT){
-    if(OP >= 0x10 && OP <= 0x17){
+    if(OP >= 0x05 && OP <= 0x0C){
+        return INTRAISE(OP);
+    }
+    else if(OP >= 0x10 && OP <= 0x17){
         return CMP(OP);
+    }
+    else if (OP >= 0x18 && OP <= 0x1F){
+        return BitwiseOP(OP);
+    }
+    else if (OP >= 0x28 && OP <= 0x2F){
+        return BitwiseOP(OP);
     }
     else if(OP >= 0x30 && OP <= 0x6f){
         return MOV(OP);
+    }
+    else if (OP >= 0x78 && OP <= 0x7F){
+        return BitwiseOP(OP);
     }
     else if (OP >= 0x80 && OP <= 0x8f){
         return ADDSUB(OP);
     }
     else if (OP >= 0x90 && OP <= 0x9f){
         return INCDEC(OP);
+    }
+    else if (OP >= 0xA8 && OP <= 0xAF){
+        return BitwiseOP(OP);
+    }
+    else if (OP >= 0xB8 && OP <= 0xBF){
+        return BitwiseOP(OP);
     }
     else if (OP >= 0xC0 && OP <= 0xC6){
         return StackOP(OP, MEMADDR, HLADDR, nextLIT);
@@ -596,10 +687,10 @@ int MainLoop(){
             case IDN:
                 REG_F &= 0b11101111;
                 break;
-            case INT:
-                HandleCPUInterrupt(MEM[ProgramCounter + 1], ACC);
-                ProgramCounter++;
-                break;
+            //case INT:
+            //    HandleCPUInterrupt(MEM[ProgramCounter + 1], ACC);
+            //    ProgramCounter++;
+            //    break;
             case LDL:
                 ACC = MEM[ProgramCounter + 1];
                 ProgramCounter++;
@@ -619,6 +710,10 @@ int MainLoop(){
                 MEM[HLADDR] = ACC;
                 break;
             case JHL:
+            case CHL:
+                if(OP == CHL){
+                    Push16bitValInStack(ProgramCounter+2);
+                }
                 ProgramCounter = HLADDR-1;
                 break;
             case JMP:
@@ -654,7 +749,7 @@ int MainLoop(){
                 break;
             case JGT:
             case CGT:
-                if(!(REG_F & 0b01000000) && (REG_F & 0b10000000)){
+                if(!(REG_F & 0b01000000) && !(REG_F & 0b10000000)){
                     if(OP == CGT){
                         Push16bitValInStack(ProgramCounter+2);
                     }
@@ -666,7 +761,7 @@ int MainLoop(){
                 break;
             case JLT:
             case CLT:
-                if(!(REG_F & 0b01000000) && !(REG_F & 0b10000000)){
+                if(!(REG_F & 0b01000000) && (REG_F & 0b10000000)){
                     if(OP == CLT){
                         Push16bitValInStack(ProgramCounter+2);
                     }
