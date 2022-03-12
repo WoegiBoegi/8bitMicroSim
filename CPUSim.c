@@ -713,6 +713,27 @@ void HandleBIOSInterrupt(unsigned char INTCODE){
     //set ProgramCounter to Address that corresponds to interrupt handling code...
 }
 
+void SoftReset(){
+    StackPointer = STACKSIZE-1;
+    ProgramCounter = ENTRYPOINT;
+    ACC = 0;
+    REG_B = 0;
+    REG_C = 0;
+    REG_D = 0;
+    REG_E = 0;
+    REG_F = 0;
+}
+
+void HardReset(){
+    SoftReset();
+    FILE *src;
+
+    src = fopen(MEMFILEPATH, "rb");  // r for read, b for binary
+    if(src != NULL){
+        fread(MEM, sizeof(MEM), 1, src);
+    }
+}
+
 int MainLoop(){
     while(1){
         unsigned char OP = MEM[ProgramCounter];
@@ -740,13 +761,7 @@ int MainLoop(){
                 StopInstr();
                 break;
             case RST:
-                StackPointer = STACKSIZE-1; 
-                ProgramCounter = ENTRYPOINT-1;
-                ACC = 0;
-                REG_B = 0;
-                REG_C = 0;
-                REG_D = 0;
-                REG_E = 0;
+                SoftReset();
                 break;
             case IEN:
                 REG_F |= 0b00010000;

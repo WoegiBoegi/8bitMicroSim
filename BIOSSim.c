@@ -7,8 +7,9 @@ bool debugModeEnable = false;
 bool step = false;
 bool halted = false;
 
-WINDOW * winLeft;
-WINDOW * winRight;
+unsigned char TerminalBuffer[24][80]; //24 lines, 80 collumns
+int CursorX = 0;
+int CursorY = 0;
 
 unsigned char CheckForBIOSInterrupt(){
     return 0x00; //e.g. check if a key is pressed => Keyboard interrupt => ProgramCounter jumps to handling code
@@ -42,6 +43,48 @@ void StopInstr(){
 void Error(){
     StopInstr();
     REG_F |= 0b00000010;
+}
+
+void drawLine(int col){
+    for(int y = 0; y <= LINES;y++){
+        mvprintw(y,col,"|");
+    }
+}
+
+void printMEM(){
+    int maxAddrLine = 0xFFF;
+    int lines = LINES-8;
+    int addrLine = (ProgramCounter/0x10);
+    int lineBuffer = (lines-1)/2;
+    int lineBufferPre = lineBuffer;
+    int lineBufferPost = lineBuffer;
+    if(lineBuffer > addrLine){
+        lineBufferPre = addrLine-1;
+        lineBufferPost = lines-1-lineBufferPre;
+    }
+    else if(lineBuffer > maxAddrLine-addrLine){
+        lineBufferPost = maxAddrLine-addrLine-1;
+        lineBufferPre = lines-1-lineBufferPost;
+    }
+
+    int firstLine = addrLine-lineBufferPre-1;
+    int lastLine = addrLine+lineBufferPost;
+    int x = 80;
+    int y = 3;
+    for(int relLine = 0; firstLine+relLine <= lastLine; relLine++){
+        unsigned int lineAddr = (firstLine+relLine)*0x10;
+        attroff(COLOR_PAIR(1));
+        mvprintw(y+relLine,x-8,"0x%04x ",lineAddr);
+        for(int relAddr = 0; relAddr <= 0xF; relAddr++){
+            unsigned int addr = lineAddr+relAddr;
+            attroff(COLOR_PAIR(1));
+            if(addr == ProgramCounter){
+                attron(COLOR_PAIR(1));
+            }
+            mvprintw(y+relLine,x+relAddr*3,"%02x",MEM[addr]);
+        }
+    }
+
 }
 
 void printREGs(){
@@ -175,8 +218,9 @@ int DoUIStuff(unsigned char OP,unsigned char Lit, unsigned int HLADDR, unsigned 
     printREGs();
     printRunInfo(isRunning,hasError);
     printCPUInfo(OP,Lit,HLADDR,MEMADDR);
-
-
+    drawLine(65);
+    printMEM();
+    drawLine(133);
     refresh();
 
     timeout(10);
@@ -194,8 +238,8 @@ int DoUIStuff(unsigned char OP,unsigned char Lit, unsigned int HLADDR, unsigned 
     else if(!isRunning && ch == 'q'){
         return 0xFF;
     }
-    else if(!isRunning && ch == 'm'){
-        //do memory dump
+    else if(!isRunning && ch == 'r'){
+        HardReset();
     }
     else if(isRunning){
         //keyboard interrupt whatever
@@ -224,7 +268,7 @@ void StartUI(){
     refresh();
     //do other settings here
     clear();
-    //winLeft = newwin()
+
 }
 
 void StopUI(){
