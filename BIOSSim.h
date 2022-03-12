@@ -9,3 +9,8 @@
 unsigned char CheckForBIOSInterrupt();
 unsigned char GetInterruptArg(unsigned char INTCODE);
 void HandleCPUInterrupt(unsigned char INTCODE, unsigned char ACC);
+int DoUIStuff(unsigned char OP,unsigned char Lit, unsigned int HLADDR, unsigned int MEMADDR);
+void StartUI();
+void StopUI();
+void StopInstr();
+void Error();

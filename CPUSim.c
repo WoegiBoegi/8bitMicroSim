@@ -1,13 +1,15 @@
 #include <stdio.h>
 #include <stdbool.h>
+#include <unistd.h>
 #include "BIOSSim.h"
+
 //0x0000 - 0x001F for stack (32 bytes) !INVALID!
 //0x0020 - 0x003F for interrupt handling (32 bytes) !INVALID!
 #define INTHANDSIZE 0x80  //8 interrupts, 16 bytes each => 128 bytes = 0x80
 #define MEMSIZE 0x10000  //64kb total memory = 0x10000
 #define STACKSIZE 0x100 //256 bytes of stack = 0x100
 #define ENTRYPOINT (STACKSIZE + INTHANDSIZE)
-#define MEMFILEPATH "/home/woegi/OneDrive/Projects/8bitMicroSim/mem.bin" //"C:\\Users\\woegi\\OneDrive\\Projects\\CPUSim\\mem.bin"
+#define MEMFILEPATH "./mem.bin"
 
 #define NOP  0x00   //no operation, do nothing
 #define HLT  0x01   //halt execution
@@ -184,13 +186,15 @@ unsigned char REG_E = 0;
 
 /*Flag Register
 *  7 6 5 4 3 2 1 0
-*  S Z 0 I 0 P 0 C
+*  S Z R I O P E C
 *  S: Sign Flag, 1 if result of previous operation is positive
 *  Z: Zero Flag, 1 if result of previous operation is zero
-*  P: Parity indicates amount of 1s in operation in binary, 1 if result has even amount of 1s
-*  C: Carry Flag, if carry was perfored in most significant bit i.e. 254+6 = 260 > 255 => C = 1
+*  R: Run Flag, 1 if Computer is executing stuff
 *  I: Interrupt enable/disable 1 = interrupt enabled
-*  0: unused, always zero
+*  O: Overflow flag, 1 if stackoverflow has occured
+*  P: Parity indicates amount of 1s in operation in binary, 1 if result has even amount of 1s
+*  E: Error flag, if an invalid opcode was encountered, or similar
+*  C: Carry Flag, if carry was perfored in most significant bit i.e. 254+6 = 260 > 255 => C = 1
 */
 unsigned char REG_F = 0;
 
@@ -201,6 +205,7 @@ unsigned char REG_L = 0;    //Memory Register Low  00XX
 
 unsigned char MEM[MEMSIZE];
 
+/*
 void printMEM(){
     printf("--------------------------------------------------------\n");
     printf("      00 01 02 03  04 05 06 07  08 09 0a 0b  0c 0d 0e 0f\n");
@@ -212,6 +217,7 @@ void printMEM(){
     }
     printf("--------------------------------------------------------\n");
 }
+
 
 void printFLAGs(){
     printf("Flag Register Breakdown:\n");
@@ -266,25 +272,30 @@ void printDebugInfo(){
     printMEM();
     printf("========================================================\n");
 }
+*/
 
 void PushOnStack(unsigned char value){
     MEM[StackPointer] = value;
     if(StackPointer == 0){
         StackPointer = STACKSIZE-1;
-        printf("STACKUNDERFLOW OCCURED\n");
+        REG_F |= 0b00001000;
+        //printf("STACKOVERFLOW OCCURED\n");
     }
     else{
         StackPointer--;
+        REG_F &= 0b11110111;
     }
 }
 
 unsigned char PullFromStack(){
     if(StackPointer == STACKSIZE-1){
         StackPointer = 0;
-        printf("STACKOVERFLOW OCCURED\n");
+        REG_F |= 0b00001000;
+        //printf("STACKOVERFLOW OCCURED\n");
     }
     else{
         StackPointer++;
+        REG_F &= 0b11110111;
     }
     unsigned char value = MEM[StackPointer];
     return value;
@@ -704,19 +715,30 @@ void HandleBIOSInterrupt(unsigned char INTCODE){
 
 int MainLoop(){
     while(1){
-        unsigned char INTCODE = CheckForBIOSInterrupt();
-        if(INTCODE != 0x00 && (REG_F & 0b00010000)){
-            HandleBIOSInterrupt(INTCODE);
-        }
         unsigned char OP = MEM[ProgramCounter];
+        unsigned char Lit = MEM[ProgramCounter+1];
         unsigned int HLADDR = REG_H*0x100+REG_L;
         unsigned int MEMADDR = MEM[ProgramCounter + 1] * 0x100 + MEM[ProgramCounter + 2];
+        int UIResponse = DoUIStuff(OP,Lit, HLADDR, MEMADDR);
+        if(UIResponse == 0xFF){
+            return 0;
+        }
+        sleep(0.02);
+        if(!(REG_F & 0b00100000)){
+            continue;
+        }
+        unsigned char INTCODE = CheckForBIOSInterrupt();
+        if(INTCODE != 0x00 && (REG_F & 0b00010000)){
+            //printf("INTERRUPT RAISED - %02x\n",INTCODE);
+            HandleBIOSInterrupt(INTCODE);
+        }
         switch(OP){
             case NOP:
                 break;
             case HLT:
-                printDebugInfo();
-                return 0;
+                //printDebugInfo();
+                StopInstr();
+                break;
             case RST:
                 StackPointer = STACKSIZE-1; 
                 ProgramCounter = ENTRYPOINT-1;
@@ -884,9 +906,9 @@ int MainLoop(){
             default:
 
                 if(getInstruction(OP,MEMADDR,HLADDR,MEM[ProgramCounter+1])){
-                    printf("ERROR: invalid opcode detected, cannot execute");
-                    printDebugInfo();
-                    return 1;
+                    //printf("ERROR: invalid opcode detected, cannot execute");
+                    //printDebugInfo();
+                    Error();
                 }
         }
         ProgramCounter++; //advance Program Counter by one, execute next instruction on next loop
@@ -903,13 +925,14 @@ int main() {
     }
     fread(MEM, sizeof(MEM), 1, src);
 
+    StartUI();
+
     int ret = MainLoop();
+
+    StopUI();
 
     if(ret != 0){
         printf("PROGRAM HAS ENCOUNTERED AN ERROR, SEE INFODUMP FOR DETAILS\n");
-    }
-    else{
-        printf("Program has executed without errors, dumped info for debug reasons :)\n");
     }
     return 0;
 }
