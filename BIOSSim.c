@@ -15,7 +15,7 @@ int timeoutVAL = 20;
 unsigned int virtualPC = 0;
 
 #define TERMLINES 24
-#define TERMCOLS 70
+#define TERMCOLS 80
 
 unsigned char KEYVAL = 0;
 
@@ -63,6 +63,18 @@ void ClearTermBuffer(){
     }
     CursorLine = 0;
     CursorCol = 0;
+}
+
+void rectangle(int y1, int x1, int y2, int x2)
+{
+    mvhline(y1, x1, 0, x2-x1);
+    mvhline(y2, x1, 0, x2-x1);
+    mvvline(y1, x1, 0, y2-y1);
+    mvvline(y1, x2, 0, y2-y1);
+    mvaddch(y1, x1, ACS_ULCORNER);
+    mvaddch(y2, x1, ACS_LLCORNER);
+    mvaddch(y1, x2, ACS_URCORNER);
+    mvaddch(y2, x2, ACS_LRCORNER);
 }
 
 void StartRun(){
@@ -283,6 +295,9 @@ void printCPUInfo(unsigned char OP, unsigned char Lit, unsigned int HLADDR, unsi
 }
 
 void printTermBuffer(){
+    rectangle(2,139,27,220);
+    mvprintw(2,142,"TERMINAL");
+    mvprintw(27,210,"TERMINAL");
     int yOffset = 3;
     int xOffset = 140;
     for(int line = 0; line < TERMLINES; line++){
@@ -311,12 +326,12 @@ int DoUIStuff(unsigned char OP,unsigned char Lit, unsigned int HLADDR, unsigned 
         printRunInfo(isRunning,hasError);
         printCPUInfo(OP,Lit,HLADDR,MEMADDR);
     }
-    mvprintw(29,10,"delay in ms: %d",timeoutVAL);
-    mvprintw(30,10,"[q]-quit  [f]-faster  [s]-slower");
-    mvprintw(32,4,"UPARROW-run  DOWNARROW-stop  RIGHTARROW-step");
+    mvprintw(LINES-7,10,"delay in ms: %d",timeoutVAL);
+    mvprintw(LINES-5,10,"[q]-quit  [f]-faster  [s]-slower");
+    mvprintw(LINES-3,4,"UPARROW-run  DOWNARROW-stop  RIGHTARROW-step");
     drawLine(65);
     if(displayMEMdata){
-        mvprintw(32,85,"[o]-scroll up [l]-scroll down");
+        mvprintw(LINES-3,85,"[o]-scroll up [l]-scroll down");
         if(isRunning){
             virtualPC = ProgramCounter;
             printMEM(ProgramCounter);
