@@ -2,33 +2,71 @@
 #include "CPUSim.h"
 #include <ncurses.h>
 
+bool KeyPressed = false;
 
-bool debugModeEnable = false;
+bool displayCPUdata = false;
+bool displayMEMdata = false;
+bool displayTERMdata = false;
 bool step = false;
 bool halted = false;
 
-unsigned char TerminalBuffer[24][80]; //24 lines, 80 collumns
-int CursorX = 0;
-int CursorY = 0;
+int timeoutVAL = 20;
 
-unsigned char CheckForBIOSInterrupt(){
-    return 0x00; //e.g. check if a key is pressed => Keyboard interrupt => ProgramCounter jumps to handling code
-}
+#define TERMLINES 24
+#define TERMCOLS 70
 
-unsigned char GetInterruptArg(unsigned char INTCODE){
-    return 0x00; //e.g. return value of key currently pressed
-}
+unsigned char KEYVAL = 0;
 
-void HandleCPUInterrupt(unsigned char INTCODE, unsigned char ACC){
-    //depending on INTCODE, do something with value in ACC, e.g. print char to screen, move cursor, etc.
-    if(INTCODE == 0x01){
-        printw("%c",ACC);
+
+unsigned char TerminalBuffer[TERMLINES][TERMCOLS]; //24 lines, 80 collumns
+int CursorLine = 0;
+int CursorCol = 0;
+
+void Scroll(){
+    CursorLine--;
+    for(int line = 0; line < TERMLINES-1; line++){
+        for(int col = 0; col < TERMCOLS; col++){
+            TerminalBuffer[line][col] = TerminalBuffer[line+1][col];
+        }
     }
+    for(int col = 0; col < TERMCOLS; col++){
+        TerminalBuffer[TERMLINES-1][col] = 0;
+    }
+}
+
+void AdvCursor(){
+    CursorCol++;
+    if(CursorCol >= TERMCOLS){
+        CursorCol = 0;
+        CursorLine++;
+        if(CursorLine >= TERMLINES){
+            Scroll();
+        }
+    }
+}
+
+void NewLine(){
+    CursorCol = 0;
+    CursorLine++;
+    if(CursorLine >= TERMLINES){
+        Scroll();
+    }
+}
+
+void ClearTermBuffer(){
+    for(int line = 0; line < TERMLINES; line++){
+        for(int col = 0; col < TERMCOLS; col++){
+            TerminalBuffer[line][col] = 0;
+        }
+    }
+    CursorLine = 0;
+    CursorCol = 0;
 }
 
 void StartRun(){
     REG_F |= 0b00100000;
     halted = false;
+    KeyPressed = true;
 }
 
 void StopRun(){
@@ -43,6 +81,44 @@ void StopInstr(){
 void Error(){
     StopInstr();
     REG_F |= 0b00000010;
+}
+
+unsigned char CheckForBIOSInterrupt(){
+    timeout(timeoutVAL);
+    int ch = getch();
+    if(ch == KEY_DOWN){
+        StopRun();
+        return 0xFF;
+    }
+    else if(ch != -1 && !KeyPressed && displayTERMdata){
+        KeyPressed = true;
+        KEYVAL = ch;
+        return 0x01;
+    }
+    else if(KeyPressed && ch == -1 && displayTERMdata){
+        KeyPressed = false;
+    }
+    return 0x00; //e.g. check if a key is pressed => Keyboard interrupt => ProgramCounter jumps to handling code
+}
+
+unsigned char GetInterruptArg(unsigned char INTCODE){
+    if(INTCODE == 0x01 && displayTERMdata){
+        return KEYVAL;
+    }
+    return 0x00; //e.g. return value of key currently pressed
+}
+
+void HandleCPUInterrupt(unsigned char INTCODE, unsigned char ACC){
+    //depending on INTCODE, do something with value in ACC, e.g. print char to screen, move cursor, etc.
+    if(INTCODE == 0x01){
+        TerminalBuffer[CursorLine][CursorCol] = ACC;
+        if(ACC == '\n'){
+            NewLine();
+        }
+        else{
+            AdvCursor();
+        }
+    }
 }
 
 void drawLine(int col){
@@ -204,6 +280,21 @@ void printCPUInfo(unsigned char OP, unsigned char Lit, unsigned int HLADDR, unsi
     mvprintw(17,25,"Register E:      0x%02x",REG_E);
 }
 
+void printTermBuffer(){
+    int yOffset = 3;
+    int xOffset = 140;
+    for(int line = 0; line < TERMLINES; line++){
+        for(int col = 0; col < TERMCOLS; col++){
+            if(line == CursorLine && col == CursorCol){
+                mvprintw(line+yOffset,xOffset+col,"_");
+            }
+            else{
+                mvprintw(line+yOffset,xOffset+col,"%c",TerminalBuffer[line][col]);
+            }
+        }
+    }
+}
+
 int DoUIStuff(unsigned char OP,unsigned char Lit, unsigned int HLADDR, unsigned int MEMADDR){
     bool isRunning = REG_F & 0b00100000;
     bool hasError = REG_F & 0b00000010;
@@ -213,60 +304,95 @@ int DoUIStuff(unsigned char OP,unsigned char Lit, unsigned int HLADDR, unsigned 
     }
 
     clear();
-
-
-    printREGs();
-    printRunInfo(isRunning,hasError);
-    printCPUInfo(OP,Lit,HLADDR,MEMADDR);
+    if(displayCPUdata){
+        printREGs();
+        printRunInfo(isRunning,hasError);
+        printCPUInfo(OP,Lit,HLADDR,MEMADDR);
+    }
+    mvprintw(29,10,"delay in ms: %d",timeoutVAL);
+    mvprintw(30,10,"[q]-quit  [f]-faster  [s]-slower");
+    mvprintw(32,4,"UPARROW-run  DOWNARROW-stop  RIGHTARROW-step");
     drawLine(65);
-    printMEM();
+    if(displayMEMdata){
+        printMEM();
+    }
     drawLine(133);
+    if(displayTERMdata){
+        printTermBuffer();
+    }
     refresh();
+    if(!isRunning){
+        timeout(50);
+        int ch = getch();
+        if(!hasError && ch == KEY_UP){
+            StartRun();
+        }
+        else if(!hasError && ch == KEY_RIGHT){
+            step = true;
+            StartRun();
+        }
+        else if(ch == 'q'){
+            return 0xFF;
+        }
+        else if(ch == 'r'){
+            ClearTermBuffer();
+            HardReset();
+        }
+        else if(ch == 'f'){
+            timeoutVAL--;
+        }
+        else if (ch == 's'){
+            timeoutVAL++;
+        }
+    }
 
-    timeout(10);
-    int ch = getch();
-    if(!hasError && ch == KEY_UP){
-        StartRun();
-    }
-    else if(!hasError && ch == KEY_DOWN){
-        StopRun();
-    }
-    else if(!hasError && !isRunning && ch == KEY_RIGHT){
-        step = true;
-        StartRun();
-    }
-    else if(!isRunning && ch == 'q'){
-        return 0xFF;
-    }
-    else if(!isRunning && ch == 'r'){
-        HardReset();
-    }
-    else if(isRunning){
-        //keyboard interrupt whatever
-    }
     return 0;
+}
+
+void StartupSettings(){
+    printw("Display CPU info? [Y/n] ");
+    refresh();
+    int ch = getch();
+    if(ch == 'n'){
+        printw(" N\n");
+    }
+    else{
+        displayCPUdata = true;
+        printw(" Y\n");
+    }
+    printw("Display Memory info? [Y/n] ");
+    refresh();
+    ch = getch();
+    if(ch == 'n'){
+        printw(" N\n");
+    }
+    else{
+        displayMEMdata = true;
+        printw(" Y\n");
+    }
+    printw("Enable Terminal Emulation? [Y/n] ");
+    refresh();
+    ch = getch();
+    if(ch == 'n'){
+        printw(" N\n");
+    }
+    else{
+        displayTERMdata = true;
+        printw(" Y\n");
+    }
+    refresh();
 }
 
 void StartUI(){
     initscr();			/* Start curses mode 		*/
     raw();				/* Line buffering disabled	*/
+    curs_set(0);
     keypad(stdscr, TRUE);		/* We get F1, F2 etc..		*/
     noecho();			/* Don't echo() while we do getch */
     printw("8bitMicroSim startup settings:\n");
-    printw("Debug Mode [y/N]?");
     start_color();
     init_pair(1,COLOR_RED,COLOR_BLACK);
-    refresh();
-    int ch = getch();
-    if(ch == 'y'){
-        debugModeEnable = true;
-        printw(" Debug Mode enabled\n");
-    }
-    else{
-        printw((" Debug Mode not enabled\n"));
-    }
-    refresh();
-    //do other settings here
+    StartupSettings();
     clear();
 
 }

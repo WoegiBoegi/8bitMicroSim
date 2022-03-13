@@ -33,9 +33,9 @@
 #define CAE  0xB1   //jumps to address if zero flag set, saves address to return to later
 #define CNE  0xB2   //jumps to address if zero flag not set, saves address to return to later
 #define CLT  0xB3   //jumps to address if zero flag not set AND sign flag not set, saves address to return to later
-#define CIC  0xB4   //jumps to address if carry flag set, saves address to return to later
-#define CHL  0xB5   //jumps to address defined in REG_H and REG_L, saves address to return to later
-#define CGT  0xB6   //jumps to address if zero flag not set AND sign flag set, saves address to return to later
+#define CGT  0xB4   //jumps to address if zero flag not set AND sign flag set, saves address to return to later
+#define CIC  0xB5   //jumps to address if carry flag set, saves address to return to later
+#define CHL  0xB6   //jumps to address defined in REG_H and REG_L, saves address to return to later
 #define RET  0xB7   //returns to saved address
 #define RST  0x04   //soft resets the computer
 #define IEN  0x02   //sets interrupt-enable flag 1
@@ -593,9 +593,7 @@ int SOPREG(unsigned char OP){
 }
 
 int INTRAISE(unsigned char OP){
-    char digitOne = (OP/0x10)*0x10;
-    char digitTwo = OP-(digitOne);
-    HandleCPUInterrupt(digitTwo-0x4,ACC);
+    HandleCPUInterrupt(OP-0x4,ACC);
     return 0;
 }
 
@@ -699,8 +697,8 @@ void Push16bitValInStack(unsigned int value){
 }
 
 unsigned int Pull16bitValFromStack(){
-    unsigned char LowByte = PullFromStack();
     unsigned char HighByte = PullFromStack();
+    unsigned char LowByte = PullFromStack();
     unsigned int value = HighByte*0x100+LowByte;
     return value;
 }
@@ -744,14 +742,16 @@ int MainLoop(){
         if(UIResponse == 0xFF){
             return 0;
         }
-        sleep(0.02);
         if(!(REG_F & 0b00100000)){
             continue;
         }
         unsigned char INTCODE = CheckForBIOSInterrupt();
         if(INTCODE != 0x00 && (REG_F & 0b00010000)){
             //printf("INTERRUPT RAISED - %02x\n",INTCODE);
-            HandleBIOSInterrupt(INTCODE);
+            if(INTCODE != 0xFF){
+                HandleBIOSInterrupt(INTCODE);
+            }
+            continue;
         }
         switch(OP){
             case NOP:
