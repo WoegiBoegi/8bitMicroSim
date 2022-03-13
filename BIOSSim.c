@@ -12,6 +12,8 @@ bool halted = false;
 
 int timeoutVAL = 20;
 
+unsigned int virtualPC = 0;
+
 #define TERMLINES 24
 #define TERMCOLS 70
 
@@ -127,10 +129,10 @@ void drawLine(int col){
     }
 }
 
-void printMEM(){
+void printMEM(unsigned int PC){
     int maxAddrLine = 0xFFF;
     int lines = LINES-8;
-    int addrLine = (ProgramCounter/0x10);
+    int addrLine = (PC/0x10);
     int lineBuffer = (lines-1)/2;
     int lineBufferPre = lineBuffer;
     int lineBufferPost = lineBuffer;
@@ -314,7 +316,14 @@ int DoUIStuff(unsigned char OP,unsigned char Lit, unsigned int HLADDR, unsigned 
     mvprintw(32,4,"UPARROW-run  DOWNARROW-stop  RIGHTARROW-step");
     drawLine(65);
     if(displayMEMdata){
-        printMEM();
+        mvprintw(32,85,"[o]-scroll up [l]-scroll down");
+        if(isRunning){
+            virtualPC = ProgramCounter;
+            printMEM(ProgramCounter);
+        }
+        else{
+            printMEM(virtualPC);
+        }
     }
     drawLine(133);
     if(displayTERMdata){
@@ -343,6 +352,16 @@ int DoUIStuff(unsigned char OP,unsigned char Lit, unsigned int HLADDR, unsigned 
         }
         else if (ch == 's'){
             timeoutVAL++;
+        }
+        else if (ch == 'o'){
+            if(virtualPC > 0x50){
+                virtualPC -= 0x50;
+            }
+        }
+        else if(ch == 'l'){
+            if(virtualPC < 0xFFFF - 0x50){
+                virtualPC += 0x50;
+            }
         }
     }
 
@@ -394,7 +413,7 @@ void StartUI(){
     init_pair(1,COLOR_RED,COLOR_BLACK);
     StartupSettings();
     clear();
-
+    virtualPC = ProgramCounter;
 }
 
 void StopUI(){
