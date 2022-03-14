@@ -45,8 +45,8 @@ int main(int argc, char *argv[]){
     for(int n = 0; n < MEMSIZE; n++){
         MEM[n] = 0x00;
     }
-    char *outName = malloc(20);
-    char *inName = malloc(20);
+    char *outName;
+    char *inName;
     if(argc <= 1){
         inName = "./test.asm";
     }
@@ -80,7 +80,6 @@ int main(int argc, char *argv[]){
     fwrite(MEM,1,sizeof(MEM),fp);
     fclose(fp);
     //write MEM to file
-
 
     
     exit(EXIT_SUCCESS);
