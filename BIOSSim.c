@@ -12,6 +12,8 @@ bool halted = false;
 
 int timeoutVAL = 20;
 
+int clearCounter = 0;
+
 unsigned int virtualPC = 0;
 
 #define TERMLINES 24
@@ -32,7 +34,7 @@ void Scroll(){
         }
     }
     for(int col = 0; col < TERMCOLS; col++){
-        TerminalBuffer[TERMLINES-1][col] = 0;
+        TerminalBuffer[TERMLINES-1][col] = ' ';
     }
 }
 
@@ -144,6 +146,11 @@ void drawLine(int col){
 void printMEM(unsigned int PC){
     int maxAddrLine = 0xFFF;
     int lines = LINES-8;
+    int maxHeight = 200;
+    if(lines > maxHeight){
+        lines = maxHeight;
+    }
+    
     int addrLine = (PC/0x10);
     int lineBuffer = (lines-1)/2;
     int lineBufferPre = lineBuffer;
@@ -320,13 +327,18 @@ int DoUIStuff(unsigned char OP,unsigned char Lit, unsigned int HLADDR, unsigned 
         step = false;
     }
 
-    clear();
+
+    if(clearCounter > 1000){
+        clearCounter = 0;
+        clear();
+    }
+    clearCounter++;    
     if(displayCPUdata){
         printREGs();
         printRunInfo(isRunning,hasError);
         printCPUInfo(OP,Lit,HLADDR,MEMADDR);
     }
-    mvprintw(LINES-7,10,"delay in ms: %d",timeoutVAL);
+    mvprintw(LINES-7,10,"delay in ms: %03d",timeoutVAL);
     mvprintw(LINES-5,10,"[q]-quit  [f]-faster  [s]-slower");
     mvprintw(LINES-3,4,"UPARROW-run  DOWNARROW-stop  RIGHTARROW-step");
     drawLine(65);
@@ -357,6 +369,9 @@ int DoUIStuff(unsigned char OP,unsigned char Lit, unsigned int HLADDR, unsigned 
         }
         else if(ch == 'q'){
             return 0xFF;
+        }
+        else if(ch =='c'){
+            clear();
         }
         else if(ch == 'r'){
             ClearTermBuffer();
