@@ -13,3 +13,7 @@ cmake-build-debug
 /ProgrammersGuide.pdf
 /microsim
 assembler
+.vscode/launch.json
+.gitignore
+.vscode/tasks.json
+Assembler

@@ -930,10 +930,15 @@ int MainLoop(){
     }
 }
 
-int main() {
+int main(int argc, char *argv[]) {
     FILE *src;
-
-    src = fopen(MEMFILEPATH, "rb");  // r for read, b for binary
+    if(argc == 1){
+        src = fopen(MEMFILEPATH, "rb");
+    }
+    else{
+        src = fopen(argv[1],"rb");
+    }
+    
     if(src == NULL){
         printf("FILE READ ERROR\n");
         return 1;
