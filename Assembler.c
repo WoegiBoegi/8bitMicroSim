@@ -18,19 +18,196 @@ unsigned int getNum(char *line){
     return (int)strtol(line+1,NULL,base); 
 }
 
+void setByte(char *line){
+    unsigned int num = getNum(line);
+    MEM[++MEMLOC] = num;
+}
+
+void setAddr(char *line){
+    //add label funtionality
+    unsigned int addr = getNum(line);
+    unsigned char highByte = (addr/0x100);
+    unsigned char lowByte = addr-(highByte*0x100);
+    MEM[++MEMLOC] = highByte;
+    MEM[++MEMLOC] = lowByte;
+}
+
+int getREGVal(char r){
+    if(r == 'H')
+        r = 'G';
+    else if (r == 'L') //reassign chars so that the math works out
+        r = 'H';
+    return r-'A';
+}
+
 void parseLine(char *line){
     if(line[0] == ';'){ //ignore line if it's a comment 
         return;
     }
+    else if(line[0] == ':'){
+        //add label funtionality
+    }
     else if(line[0] == '$'){    //$means "set location to"
         MEMLOC = getNum(line+1);
-        printf("set memloc to %04x\n",MEMLOC);
         return;
     }
     else{   //time to get the Instruction from the mnemonic...
-        if(strcmp(line, "HLT") == 0){
+        if(strncmp(line, "HLT",3) == 0){
             MEM[MEMLOC] = 0x01;
-            printf("inserted value 0x01 into %04x\n",MEMLOC);
+        }
+        else if(strncmp(line, "NOP",3) == 0) {
+            MEM[MEMLOC] = 0x00;
+        }
+        else if(strncmp(line, "IEN",3) == 0) {
+            MEM[MEMLOC] = 0x02;
+        }
+        else if(strncmp(line, "IDN",3) == 0) {
+            MEM[MEMLOC] = 0x03;
+        }
+        else if(strncmp(line, "RST",3) == 0) {
+            MEM[MEMLOC] = 0x04;
+        }
+        else if(strncmp(line, "LDM", 3) == 0){
+            MEM[MEMLOC] = 0x20;
+        }
+        else if(strncmp(line, "STM", 3) == 0){
+            MEM[MEMLOC] = 0x21;
+        }
+        else if(strncmp(line, "LDL", 3) == 0){
+            MEM[MEMLOC] = 0x23;
+            setByte(line+3);
+        }
+        else if(strncmp(line, "LDA", 3) == 0){
+            MEM[MEMLOC] = 0x22;
+            setAddr(line+3);
+        }
+        else if(strncmp(line, "STA", 3) == 0){
+            MEM[MEMLOC] = 0x24;
+            setAddr(line+3);
+        }
+        else if(strncmp(line, "INT",3) == 0) {
+            MEM[MEMLOC] = 0x04+line[3]+'0';
+        }
+        else if(strncmp(line,"MOV", 3) == 0){
+            MEM[MEMLOC] = 0x30+(0x08*getREGVal(line[3])+getREGVal(line[4]));
+        }
+        else if(strncmp(line, "CMP", 3) == 0){
+            MEM[MEMLOC] = 0x10+getREGVal(line[3]);
+        }
+        else if(strncmp(line, "NND", 3) == 0){
+            MEM[MEMLOC] = 0x18+getREGVal(line[3]);
+        }
+        else if(strncmp(line, "NOT", 3) == 0){
+            MEM[MEMLOC] = 0x28+getREGVal(line[3]);
+        }
+        else if(strncmp(line, "JHL",3) == 0){
+            MEM[MEMLOC] = 0x75;
+        }
+        else if(strncmp(line, "J", 1) == 0){
+            int opcode = 0x70;          
+            if(strncmp(line+1, "IE", 2) == 0)
+                opcode+=1;
+            else if(strncmp(line+1, "NE", 2) == 0)
+                opcode+=2;
+            else if(strncmp(line+1, "LT", 2) == 0)
+                opcode+=3;
+            else if(strncmp(line+1, "IC", 2) == 0)
+                opcode+=4;
+            else if(strncmp(line+1, "GT", 2) == 0)
+                opcode+=6;
+            
+            MEM[MEMLOC] = opcode;
+            setAddr(line+3);
+        }
+        else if(strncmp(line, "AND", 3) == 0){
+            MEM[MEMLOC] = 0x78+getREGVal(line[3]);
+        }
+        else if(strncmp(line, "ORA", 3) == 0){
+            MEM[MEMLOC] = 0xA8+getREGVal(line[3]);
+        }
+        else if(strncmp(line, "XOR", 3) == 0){
+            MEM[MEMLOC] = 0xB8+getREGVal(line[3]);
+        }
+        else if(strncmp(line, "ADD", 3) == 0){
+            MEM[MEMLOC] = 0x80+getREGVal(line[3]);
+        }
+        else if(strncmp(line, "SUB", 3) == 0){
+            MEM[MEMLOC] = 0x88+getREGVal(line[3]);
+        }
+        else if(strncmp(line, "INC", 3) == 0){
+            MEM[MEMLOC] = 0x90+getREGVal(line[3]);
+        }
+        else if(strncmp(line, "DEC", 3) == 0){
+            MEM[MEMLOC] = 0x98+getREGVal(line[3]);
+        }
+        else if(strncmp(line, "INA", 3) == 0){
+            MEM[MEMLOC] = 0xA0;
+            setAddr(line+3);
+        }
+        else if(strncmp(line, "DEA", 3) == 0){
+            MEM[MEMLOC] = 0xA1;
+            setAddr(line+3);
+        }
+        else if(strncmp(line, "INM", 3) == 0){
+            MEM[MEMLOC] = 0xA2;
+        }
+        else if(strncmp(line, "DEM", 3) == 0){
+            MEM[MEMLOC] = 0xA3;
+        }
+        else if(strncmp(line, "RET", 3) == 0){
+            MEM[MEMLOC] = 0xB7;
+        }
+        else if(strncmp(line, "CHL", 3) == 0){
+            MEM[MEMLOC] = 0xB6;
+        }
+        else if(strncmp(line, "C", 1) == 0){
+            int opcode = 0xB0;          
+            if(strncmp(line+1, "IE", 2) == 0)
+                opcode+=1;
+            else if(strncmp(line+1, "NE", 2) == 0)
+                opcode+=2;
+            else if(strncmp(line+1, "LT", 2) == 0)
+                opcode+=3;
+            else if(strncmp(line+1, "IC", 2) == 0)
+                opcode+=5;
+            else if(strncmp(line+1, "GT", 2) == 0)
+                opcode+=4;
+            
+            MEM[MEMLOC] = opcode;
+            setAddr(line+3);
+        }
+        else if(strncmp(line, "SPS", 3) == 0){
+            MEM[MEMLOC] = 0xC0;
+        }
+        else if(strncmp(line, "SPW", 3) == 0){
+            MEM[MEMLOC] = 0xC1;
+        }
+        else if(strncmp(line, "SPL", 3) == 0){
+            MEM[MEMLOC] = 0xC2;
+            setByte(line+3);
+        }
+        else if(strncmp(line, "SPA", 3) == 0){
+            MEM[MEMLOC] = 0xC3;
+            setAddr(line+3);
+        }
+        else if(strncmp(line, "SBA", 3) == 0){
+            MEM[MEMLOC] = 0xC4;
+            setAddr(line+3);
+        }
+        else if(strncmp(line, "SPM", 3) == 0){
+            MEM[MEMLOC] = 0xC5;
+        }
+        else if(strncmp(line, "MOM", 3) == 0){
+            MEM[MEMLOC] = 0xE0+getREGVal(line[3]);
+        }
+        else if(strncmp(line, "MIM", 3) == 0){
+            MEM[MEMLOC] = 0xE8+getREGVal(line[3]);
+        }
+        else if(strncmp(line, "SPR", 3) == 0){
+            MEM[MEMLOC] = 0xF0+getREGVal(line[3]);
+        }
+        else if(strncmp(line, "SBR", 3) == 0){
+            MEM[MEMLOC] = 0xF8+getREGVal(line[3]);
         }
     }
 
@@ -38,6 +215,15 @@ void parseLine(char *line){
     //parse line to do shit ig
 }
 
+void removeSpaces(char *s) {
+    char *d = s;
+    do {
+        while (*d == ' ' || *d == ',') {
+            ++d;
+        }
+
+    } while ((*s++ = *d++));
+}
 
 
 int main(int argc, char *argv[]){
@@ -72,6 +258,7 @@ int main(int argc, char *argv[]){
     while ((read = getline(&line, &len, fp)) != -1) {
         if(line[strlen(line)-1] == '\n')
             line[strlen(line)-1] = '\0';
+        removeSpaces(line);
         parseLine(line);
     }
     fclose(fp);
