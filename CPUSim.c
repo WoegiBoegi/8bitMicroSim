@@ -40,6 +40,8 @@
 #define RST  0x04   //soft resets the computer
 #define IEN  0x02   //sets interrupt-enable flag 1
 #define IDN  0x03   //sets interrupt-enable flag 0
+#define LHL  0x25   //loads next two bytes into H and L registers
+#define SHL  0x26   //stores H and L registers at address
 
 /*
  * Cx Stack pointer operations
@@ -916,6 +918,16 @@ int MainLoop(){
                     }
                 }
                 setParity(&MEM[HLADDR]);
+                break;
+            case LHL:
+                REG_H = MEM[ProgramCounter+1];
+                REG_L = MEM[ProgramCounter+2];
+                ProgramCounter+=2;
+                break;
+            case SHL:
+                MEM[MEMADDR] = REG_H;
+                MEM[MEMADDR+1] = REG_L;
+                ProgramCounter += 2;
                 break;
             default:
 

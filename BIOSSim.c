@@ -375,6 +375,7 @@ int DoUIStuff(unsigned char OP,unsigned char Lit, unsigned int HLADDR, unsigned 
         }
         else if(ch == 'r'){
             ClearTermBuffer();
+            clear();
             HardReset();
         }
         else if(ch == 'f'){

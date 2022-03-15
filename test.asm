@@ -1,15 +1,17 @@
 $x02A0
-:cool
-INC B
-MOV C,B
-RET
+;declare word and give it a label
+:string
+w:"hello world!"
 
 $x0180
-;this is a comment
-LDL x80
-STA x01A0
-MOV B,A
-SPR B
-CAL :cool
-SBR B
+;print string
+LHL :string
+MIL B,x00
+LDM
+:loop
+INT 1
+INC L
+LDM
+CMP B
+JNE :loop
 HLT

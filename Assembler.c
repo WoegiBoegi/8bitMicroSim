@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -58,6 +59,15 @@ void parseLine(char *line){
     if(line[0] == ';'){ //ignore line if it's a comment 
         return;
     }
+    else if (strncmp(line,"l:",2) == 0){
+        MEM[MEMLOC] = getNum(line+2);
+    }
+    else if(strncmp(line,"w:",2) == 0){
+        for(int n = 2; n < strlen(line);n++){
+            MEM[MEMLOC++] = line[n];
+        }
+        return;
+    }
     else if(line[0] == ':'){
         char *newLabel = malloc(strlen(line));
         for(int n = 1; n < strlen(line);n++){
@@ -109,7 +119,7 @@ void parseLine(char *line){
             setAddr(line+3);
         }
         else if(strncmp(line, "INT",3) == 0) {
-            MEM[MEMLOC] = 0x04+line[3]+'0';
+            MEM[MEMLOC] = 0x04+line[3]-'0';
         }
         else if(strncmp(line,"MOV", 3) == 0){
             MEM[MEMLOC] = 0x30+(0x08*getREGVal(line[3])+getREGVal(line[4]));
@@ -220,6 +230,10 @@ void parseLine(char *line){
         else if(strncmp(line, "SPM", 3) == 0){
             MEM[MEMLOC] = 0xC5;
         }
+        else if(strncmp(line, "MIL", 3) == 0){
+            MEM[MEMLOC] = 0xC8+getREGVal(line[3]);
+            setByte(line+4);
+        }
         else if(strncmp(line, "MOM", 3) == 0){
             MEM[MEMLOC] = 0xE0+getREGVal(line[3]);
         }
@@ -232,17 +246,34 @@ void parseLine(char *line){
         else if(strncmp(line, "SBR", 3) == 0){
             MEM[MEMLOC] = 0xF8+getREGVal(line[3]);
         }
+        else if(strncmp(line, "LHL", 3) == 0){
+            MEM[MEMLOC] = 0x25;
+            setAddr(line + 3);
+        }
+        else if(strncmp(line, "SHL", 3) == 0){
+            MEM[MEMLOC] = 0x26;
+            setAddr(line + 3);
+        }
     }
 
     MEMLOC++;
-    //parse line to do shit ig
 }
 
-void removeSpaces(char *s) {
+void filterLine(char *s) {
     char *d = s;
+    int filter = 1;
     do {
-        while (*d == ' ' || *d == ',') {
-            ++d;
+        while (*d == ' ' || *d == ',' || *d == '"') {
+            if(*d == '"'){
+                d++;
+                filter = !filter;
+            }
+            else{
+                if(filter == 1)
+                    d++;
+                if(filter == 0)
+                    break;
+            }
         }
 
     } while ((*s++ = *d++));
@@ -281,7 +312,7 @@ int main(int argc, char *argv[]){
     while ((read = getline(&line, &len, fp)) != -1) {
         if(line[strlen(line)-1] == '\n')
             line[strlen(line)-1] = '\0';
-        removeSpaces(line);
+        filterLine(line);
         parseLine(line);
     }
     fclose(fp);
