@@ -273,6 +273,7 @@ void printDebugInfo(){
     printf("========================================================\n");
 }
 */
+FILE *src;
 
 void PushOnStack(unsigned char value){
     MEM[StackPointer] = value;
@@ -691,7 +692,7 @@ int getInstruction(unsigned char OP, unsigned int MEMADDR, unsigned int HLADDR, 
 
 void Push16bitValInStack(unsigned int value){
     unsigned char HighByte = value/0x100;
-    unsigned char LowByte = value-HighByte;
+    unsigned char LowByte = value-(HighByte*0x100);
     PushOnStack(LowByte);
     PushOnStack(HighByte);
 }
@@ -724,9 +725,7 @@ void SoftReset(){
 
 void HardReset(){
     SoftReset();
-    FILE *src;
-
-    src = fopen(MEMFILEPATH, "rb");  // r for read, b for binary
+    //src = fopen(MEMFILEPATH, "rb");  // r for read, b for binary
     if(src != NULL){
         fread(MEM, sizeof(MEM), 1, src);
     }
@@ -931,7 +930,6 @@ int MainLoop(){
 }
 
 int main(int argc, char *argv[]) {
-    FILE *src;
     if(argc == 1){
         src = fopen(MEMFILEPATH, "rb");
     }

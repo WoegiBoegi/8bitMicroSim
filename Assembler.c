@@ -6,8 +6,23 @@
 unsigned char MEM[MEMSIZE];
 unsigned int MEMLOC = 0;
 
+unsigned int labelcount = 0;
+char *labels[100];
+unsigned int pointers[100];
+
 
 unsigned int getNum(char *line){
+    if(line[0] == ':'){
+        for(int n = 0; n < 100; n++){
+            if(labels[n]){
+                if(strcmp(labels[n], line+1) == 0){
+                    return pointers[n];
+                }
+            }
+        }
+        printf("invalid label: %s\n",line);
+        return 0;
+    }
     int base = 2;
     if(line[0] == 'x'){     //x is the prefix for hexadecimal
         base = 16;
@@ -24,8 +39,7 @@ void setByte(char *line){
 }
 
 void setAddr(char *line){
-    //add label funtionality
-    unsigned int addr = getNum(line);
+    unsigned int addr = getNum(line);   
     unsigned char highByte = (addr/0x100);
     unsigned char lowByte = addr-(highByte*0x100);
     MEM[++MEMLOC] = highByte;
@@ -45,6 +59,15 @@ void parseLine(char *line){
         return;
     }
     else if(line[0] == ':'){
+        char *newLabel = malloc(strlen(line));
+        for(int n = 1; n < strlen(line);n++){
+            newLabel[n-1] = line[n];
+        }
+        newLabel[strlen(line)-1] = '\0';
+        labels[labelcount] = newLabel;
+        pointers[labelcount] = MEMLOC;
+        labelcount++;
+        return;
         //add label funtionality
     }
     else if(line[0] == '$'){    //$means "set location to"
@@ -268,6 +291,10 @@ int main(int argc, char *argv[]){
     fclose(fp);
     //write MEM to file
 
+    for(int n = 0; n < 100; n++){
+        if(labels[n])
+            free(labels[n]);
+    }
     
     exit(EXIT_SUCCESS);
 }
