@@ -60,7 +60,7 @@ void NewLine(){
 void ClearTermBuffer(){
     for(int line = 0; line < TERMLINES; line++){
         for(int col = 0; col < TERMCOLS; col++){
-            TerminalBuffer[line][col] = 0;
+            TerminalBuffer[line][col] = ' ';
         }
     }
     CursorLine = 0;
