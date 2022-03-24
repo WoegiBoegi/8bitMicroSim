@@ -11,9 +11,13 @@ unsigned int labelcount = 0;
 char *labels[100];
 unsigned int pointers[100];
 
+bool firstPass = true;
 
 unsigned int getNum(char *line){
     if(line[0] == ':'){
+        if(firstPass == true){
+            return 0xFFFF;
+        }
         for(int n = 0; n < 100; n++){
             if(labels[n]){
                 if(strcmp(labels[n], line+1) == 0){
@@ -22,14 +26,14 @@ unsigned int getNum(char *line){
             }
         }
         printf("invalid label: %s\n",line);
-        return 0;
+        return 0; 
     }
-    int base = 2;
+    int base = 10;
     if(line[0] == 'x'){     //x is the prefix for hexadecimal
         base = 16;
     }
-    else if(line[0] == 'd'){ //d = decimal
-        base = 10;
+    else if(line[0] == 'b'){ //b = binary, default is decimal
+        base = 2;
     } 
     return (int)strtol(line+1,NULL,base); 
 }
@@ -69,6 +73,9 @@ void parseLine(char *line){
         return;
     }
     else if(line[0] == ':'){
+        if(firstPass == false){
+            return;
+        }
         char *newLabel = malloc(strlen(line));
         for(int n = 1; n < strlen(line);n++){
             newLabel[n-1] = line[n];
@@ -78,9 +85,8 @@ void parseLine(char *line){
         pointers[labelcount] = MEMLOC;
         labelcount++;
         return;
-        //add label funtionality
     }
-    else if(line[0] == '$'){    //$means "set location to"
+    else if(line[0] == '$'){    //$ means "set location to"
         MEMLOC = getNum(line+1);
         return;
     }
@@ -119,7 +125,7 @@ void parseLine(char *line){
             setAddr(line+3);
         }
         else if(strncmp(line, "INT",3) == 0) {
-            MEM[MEMLOC] = 0x04+line[3]-'0';
+            MEM[MEMLOC] = 0x04+getNum(line+3);
         }
         else if(strncmp(line,"MOV", 3) == 0){
             MEM[MEMLOC] = 0x30+(0x08*getREGVal(line[3])+getREGVal(line[4]));
@@ -279,6 +285,26 @@ void filterLine(char *s) {
     } while ((*s++ = *d++));
 }
 
+void assembleFromFile(char * inName)
+{
+    FILE * fp;
+    char * line = NULL;
+    size_t len = 0;
+    ssize_t read;
+
+    fp = fopen(inName, "r");
+    if (fp == NULL)
+        exit(EXIT_FAILURE);
+
+    while ((read = getline(&line, &len, fp)) != -1) {
+        if(line[strlen(line)-1] == '\n')
+            line[strlen(line)-1] = '\0';
+        filterLine(line);
+        parseLine(line);
+    }
+    fclose(fp);
+}
+
 
 int main(int argc, char *argv[]){
 
@@ -300,24 +326,12 @@ int main(int argc, char *argv[]){
     else{
         outName = argv[2];
     }
-    FILE * fp;
-    char * line = NULL;
-    size_t len = 0;
-    ssize_t read;
+    
+    assembleFromFile(inName);
+    firstPass = false;
+    assembleFromFile(inName);
 
-    fp = fopen(inName, "r");
-    if (fp == NULL)
-        exit(EXIT_FAILURE);
-
-    while ((read = getline(&line, &len, fp)) != -1) {
-        if(line[strlen(line)-1] == '\n')
-            line[strlen(line)-1] = '\0';
-        filterLine(line);
-        parseLine(line);
-    }
-    fclose(fp);
-
-    fp = fopen(outName,"w");
+    FILE * fp = fopen(outName,"w");
     fwrite(MEM,1,sizeof(MEM),fp);
     fclose(fp);
     //write MEM to file

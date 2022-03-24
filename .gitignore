@@ -17,3 +17,4 @@ assembler
 .gitignore
 .vscode/tasks.json
 Assembler
+test.bin
