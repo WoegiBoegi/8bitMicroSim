@@ -143,7 +143,7 @@ void drawLine(int col){
     }
 }
 
-void printMEM(unsigned int PC){
+void printMEM(unsigned int PC, int hOffset){
     int maxAddrLine = 0xFFF;
     int lines = LINES-8;
     int maxHeight = 200;
@@ -166,7 +166,7 @@ void printMEM(unsigned int PC){
 
     int firstLine = addrLine-lineBufferPre-1;
     int lastLine = addrLine+lineBufferPost;
-    int x = 80;
+    int x = hOffset;
     int y = 3;
     for(int relLine = 0; firstLine+relLine <= lastLine; relLine++){
         unsigned int lineAddr = (firstLine+relLine)*0x10;
@@ -301,12 +301,13 @@ void printCPUInfo(unsigned char OP, unsigned char Lit, unsigned int HLADDR, unsi
     mvprintw(17,25,"Register E:      0x%02x",REG_E);
 }
 
-void printTermBuffer(){
-    rectangle(2,139,27,220);
-    mvprintw(2,142,"TERMINAL");
-    mvprintw(27,210,"TERMINAL");
+void printTermBuffer(int hOffset){
+
+    rectangle(2,hOffset-1,27,hOffset+80);
+    mvprintw(2,hOffset+2,"TERMINAL");
+    mvprintw(27,hOffset+70,"TERMINAL");
     int yOffset = 3;
-    int xOffset = 140;
+    int xOffset = hOffset;
     for(int line = 0; line < TERMLINES; line++){
         for(int col = 0; col < TERMCOLS; col++){
             if(line == CursorLine && col == CursorCol){
@@ -327,6 +328,7 @@ int DoUIStuff(unsigned char OP,unsigned char Lit, unsigned int HLADDR, unsigned 
         step = false;
     }
 
+    int hOffset = 5;
 
     if(clearCounter > 1000){
         clearCounter = 0;
@@ -337,24 +339,28 @@ int DoUIStuff(unsigned char OP,unsigned char Lit, unsigned int HLADDR, unsigned 
         printREGs();
         printRunInfo(isRunning,hasError);
         printCPUInfo(OP,Lit,HLADDR,MEMADDR);
+        drawLine(hOffset+60);
+        hOffset += 75; 
     }
     mvprintw(LINES-7,10,"delay in ms: %03d",timeoutVAL);
     mvprintw(LINES-5,10,"[q]-quit  [f]-faster  [s]-slower");
     mvprintw(LINES-3,4,"UPARROW-run  DOWNARROW-stop  RIGHTARROW-step");
-    drawLine(65);
+    
     if(displayMEMdata){
-        mvprintw(LINES-3,85,"[o]-scroll up [l]-scroll down");
+        mvprintw(LINES-3,hOffset+5,"[o]-scroll up [l]-scroll down");
         if(isRunning){
             virtualPC = ProgramCounter;
-            printMEM(ProgramCounter);
+            printMEM(ProgramCounter,hOffset);
         }
         else{
-            printMEM(virtualPC);
+            printMEM(virtualPC,hOffset);
         }
+        drawLine(hOffset+53);
+        hOffset += 60;
     }
-    drawLine(133);
+    
     if(displayTERMdata){
-        printTermBuffer();
+        printTermBuffer(hOffset);
     }
     refresh();
     if(!isRunning){
