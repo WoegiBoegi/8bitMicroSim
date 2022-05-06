@@ -38,22 +38,18 @@ void Scroll(){
     }
 }
 
-void AdvCursor(){
-    CursorCol++;
-    if(CursorCol >= TERMCOLS){
-        CursorCol = 0;
-        CursorLine++;
-        if(CursorLine >= TERMLINES){
-            Scroll();
-        }
-    }
-}
-
 void NewLine(){
     CursorCol = 0;
     CursorLine++;
     if(CursorLine >= TERMLINES){
         Scroll();
+    }
+}
+
+void AdvCursor(){
+    CursorCol++;
+    if(CursorCol >= TERMCOLS){
+        NewLine();
     }
 }
 
@@ -127,13 +123,22 @@ unsigned char GetInterruptArg(unsigned char INTCODE){
 void HandleCPUInterrupt(unsigned char INTCODE, unsigned char ACC){
     //depending on INTCODE, do something with value in ACC, e.g. print char to screen, move cursor, etc.
     if(INTCODE == 0x01){
-        TerminalBuffer[CursorLine][CursorCol] = ACC;
         if(ACC == '\n'){
             NewLine();
         }
-        else{
+        else if(ACC == '\b'){
             AdvCursor();
         }
+        else{
+            TerminalBuffer[CursorLine][CursorCol] = ACC;
+            AdvCursor();
+        }
+    }
+    else if(INTCODE == 0x02){ //Terminal goto X
+        CursorCol = ACC;
+    }
+    else if(INTCODE == 0x03){ //Terminal goto Y 
+        CursorLine = ACC;
     }
 }
 
