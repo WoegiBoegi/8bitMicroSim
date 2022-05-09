@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include "CPUSim.h"
 #include <ncurses.h>
 
@@ -13,6 +14,8 @@ bool halted = false;
 int timeoutVAL = 20;
 
 int clearCounter = 0;
+
+int prevCenterLine = 0;
 
 unsigned int virtualPC = 0;
 
@@ -124,9 +127,11 @@ void HandleCPUInterrupt(unsigned char INTCODE, unsigned char ACC){
     //depending on INTCODE, do something with value in ACC, e.g. print char to screen, move cursor, etc.
     if(INTCODE == 0x01){
         if(ACC == '\n'){
+            TerminalBuffer[CursorLine][CursorCol] = ' ';
             NewLine();
         }
         else if(ACC == '\b'){
+            TerminalBuffer[CursorLine][CursorCol] = ' ';
             AdvCursor();
         }
         else{
@@ -135,9 +140,11 @@ void HandleCPUInterrupt(unsigned char INTCODE, unsigned char ACC){
         }
     }
     else if(INTCODE == 0x02){ //Terminal goto X
+        TerminalBuffer[CursorLine][CursorCol] = ' ';
         CursorCol = ACC;
     }
     else if(INTCODE == 0x03){ //Terminal goto Y 
+        TerminalBuffer[CursorLine][CursorCol] = ' ';
         CursorLine = ACC;
     }
 }
@@ -156,21 +163,29 @@ void printMEM(unsigned int PC, int hOffset){
         lines = maxHeight;
     }
     
-    int addrLine = (PC/0x10);
+    int centerLine = (PC/0x10);
+
+    if(abs(centerLine - prevCenterLine) > 10){
+        prevCenterLine = centerLine;
+    }
+    else{
+        centerLine = prevCenterLine;
+    }
+
     int lineBuffer = (lines-1)/2;
     int lineBufferPre = lineBuffer;
     int lineBufferPost = lineBuffer;
-    if(lineBuffer > addrLine){
-        lineBufferPre = addrLine-1;
+    if(lineBuffer > centerLine){
+        lineBufferPre = centerLine-1;
         lineBufferPost = lines-1-lineBufferPre;
     }
-    else if(lineBuffer > maxAddrLine-addrLine){
-        lineBufferPost = maxAddrLine-addrLine-1;
+    else if(lineBuffer > maxAddrLine-centerLine){
+        lineBufferPost = maxAddrLine-centerLine-1;
         lineBufferPre = lines-1-lineBufferPost;
     }
 
-    int firstLine = addrLine-lineBufferPre-1;
-    int lastLine = addrLine+lineBufferPost;
+    int firstLine = centerLine-lineBufferPre-1;
+    int lastLine = centerLine+lineBufferPost;
     int x = hOffset;
     int y = 3;
     for(int relLine = 0; firstLine+relLine <= lastLine; relLine++){
@@ -313,14 +328,10 @@ void printTermBuffer(int hOffset){
     mvprintw(27,hOffset+70,"TERMINAL");
     int yOffset = 3;
     int xOffset = hOffset;
+    TerminalBuffer[CursorLine][CursorCol] = '_';
     for(int line = 0; line < TERMLINES; line++){
         for(int col = 0; col < TERMCOLS; col++){
-            if(line == CursorLine && col == CursorCol){
-                mvprintw(line+yOffset,xOffset+col,"_");
-            }
-            else{
-                mvprintw(line+yOffset,xOffset+col,"%c",TerminalBuffer[line][col]);
-            }
+            mvprintw(line+yOffset,xOffset+col,"%c",TerminalBuffer[line][col]);
         }
     }
 }
