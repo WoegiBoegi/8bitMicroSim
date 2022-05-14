@@ -127,7 +127,9 @@ void HandleCPUInterrupt(unsigned char INTCODE, unsigned char ACC){
     //depending on INTCODE, do something with value in ACC, e.g. print char to screen, move cursor, etc.
     if(INTCODE == 0x01){
         if(ACC == '\n'){
-            TerminalBuffer[CursorLine][CursorCol] = ' ';
+            for(int n = CursorCol; n < TERMCOLS; n++){
+                TerminalBuffer[CursorLine][n] = ' ';
+            }
             NewLine();
         }
         else if(ACC == '\b'){
@@ -321,13 +323,12 @@ void printCPUInfo(unsigned char OP, unsigned char Lit, unsigned int HLADDR, unsi
     mvprintw(17,25,"Register E:      0x%02x",REG_E);
 }
 
-void printTermBuffer(int hOffset){
+void printTermBuffer(int xOffset){
 
-    rectangle(2,hOffset-1,27,hOffset+80);
-    mvprintw(2,hOffset+2,"TERMINAL");
-    mvprintw(27,hOffset+70,"TERMINAL");
+    rectangle(2,xOffset-1,27,xOffset+80);
+    mvprintw(2,xOffset+2,"TERMINAL");
+    mvprintw(27,xOffset+70,"TERMINAL");
     int yOffset = 3;
-    int xOffset = hOffset;
     TerminalBuffer[CursorLine][CursorCol] = '_';
     for(int line = 0; line < TERMLINES; line++){
         for(int col = 0; col < TERMCOLS; col++){
